@@ -8,15 +8,23 @@ afterEach(() => vi.unstubAllEnvs());
 const input: RouterInput = { messages: [{ role: "user", content: "hi" }], maxOutputTokens: 32 };
 
 describe("built-in providers", () => {
-  it("registers all four through explicit startup injection, without needing keys", () => {
-    const router = createRouter({ providers: createBuiltInProviders() });
+  it("registers only providers with configured keys or a local base URL", () => {
+    expect(createBuiltInProviders({}, {})).toEqual({});
+    const router = createRouter({ providers: createBuiltInProviders({}, { OPENAI_API_KEY: "openai", ANTHROPIC_API_KEY: "anthropic", OLLAMA_BASE_URL: "http://localhost:11434", OLLAMA_CLOUD_API_KEY: "cloud" }) });
     expect(router.providers()).toEqual(["openai", "anthropic", "ollama", "ollama-cloud"]);
+  });
+  it("does not enable Ollama implicitly and ignores empty settings", () => {
+    expect(createBuiltInProviders({}, { OPENAI_API_KEY: "", OLLAMA_BASE_URL: "  " })).toEqual({});
+    expect(Object.keys(createBuiltInProviders({}, { ANTHROPIC_API_KEY: "claude" }))).toEqual(["anthropic"]);
+    expect(Object.keys(createBuiltInProviders({ ollama: { baseURL: "http://local.test" } }, {}))).toEqual(["ollama"]);
+    expect(Object.keys(createBuiltInProviders({ ollama: { baseURL: "" } }, { OLLAMA_BASE_URL: "http://local.test" }))).toEqual([]);
+    expect(Object.keys(createBuiltInProviders({}, { OLLAMA_CLOUD_API_KEY: "", OLLAMA_API_KEY: "cloud-fallback" }))).toEqual(["ollama-cloud"]);
   });
 
   it.each(["openai", "anthropic", "ollama", "ollama-cloud"] as const)("calls %s through its native API and returns canonical output", async (name) => {
     const native = name === "openai" ? openaiResponse : name === "anthropic" ? anthropicResponse : ollamaResponse;
     const http = transport(native);
-    const providers = createBuiltInProviders({ [name]: { apiKey: "test-key", baseURL: "http://provider.test", fetch: http.fetch } });
+    const providers = createBuiltInProviders({ [name]: { apiKey: "test-key", baseURL: "http://provider.test", fetch: http.fetch } }, {});
     const router = createRouter({ providers, dialects: { openai: openaiDialect, anthropic: anthropicDialect, ollama: ollamaDialect } });
     const res = await router.complete({ provider: name, model: "test-model", input });
     expect(http.calls).toHaveLength(1);

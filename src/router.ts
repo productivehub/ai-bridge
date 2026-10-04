@@ -3,13 +3,14 @@ import { routerDialect } from "./dialects/router.js";
 import type { RouterInput } from "./baseline.js";
 import type {
   DialectInput, DialectOutput, DialectRegistry, DialectService, ProviderRegistry,
-  RouteRequest, RouterConfig, RouterResponse,
+  RouteRequest, RouterConfig, RouterResponse, ListModelsRequest, RouterModelsResponse,
 } from "./types.js";
 
 type WithBaseline<D extends DialectRegistry> = D & { router: typeof routerDialect };
 
 export interface Router<P extends ProviderRegistry = ProviderRegistry, D extends DialectRegistry = DialectRegistry> {
   complete(req: RouteRequest<keyof P & string, WithBaseline<D>>): Promise<RouterResponse<WithBaseline<D>>>;
+  listModels(req: ListModelsRequest<keyof P & string>): Promise<RouterModelsResponse>;
   providers(): (keyof P & string)[];
   dialects(): (keyof WithBaseline<D> & string)[];
 }
@@ -29,6 +30,18 @@ export function createRouter<const P extends ProviderRegistry, const D extends D
   }
 
   return {
+    async listModels(req) {
+      const startedAt = new Date().toISOString();
+      const start = performance.now();
+      const provider = providers.get(req.provider);
+      if (!provider) throw new UnknownProviderError(req.provider);
+      if (!provider.listModels) throw new UnsupportedFeatureError(req.provider, "model discovery");
+      const result = await provider.listModels();
+      return {
+        provider: req.provider, models: result.models, raw: result.raw,
+        meta: { startedAt, endedAt: new Date().toISOString(), durationMs: performance.now() - start },
+      };
+    },
     async complete(req) {
       const startedAt = new Date().toISOString();
       const start = performance.now();

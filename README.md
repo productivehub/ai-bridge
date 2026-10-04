@@ -1,6 +1,6 @@
 # @productivehub/router
 
-An extensible AI router with its own provider-neutral `router` dialect. Providers only speak this baseline. Every call returns a `RouterResponse`; use `res.toDialect(name)` when you need another response shape.
+An extensible AI router with its own provider-neutral `router` dialect. Providers only speak this baseline. Completions return a `RouterResponse`; use `res.toDialect(name)` when you need another response shape. Query provider model catalogs with `router.listModels({ provider })`.
 
 Created and maintained by [Segev Shmueli](https://github.com/segevsh) (`@segevsh`) as part of [productiveHub](https://github.com/productivehub).
 
@@ -60,7 +60,66 @@ res.toDialect("router");                 // Same object as res.output
 
 Only injected providers and dialects are available. The `router` baseline dialect is intrinsic. Registries belong to each instance; there is no global registration state. Names and native input/output types are inferred from the objects passed at startup.
 
-Providers are lightweight until first use. OpenAI and Anthropic load their SDKs lazily. Ollama and Ollama Cloud share the native `/api/chat` implementation. Calls are non-streaming and do not retry automatically.
+Providers are lightweight until first use. `createBuiltInProviders(config, env)`
+registers hosted providers only with nonempty keys and local Ollama only with an
+explicit base URL from config or `OLLAMA_BASE_URL`. Empty settings disable that
+provider. The factory captures connections at startup; directly constructed
+adapters retain their documented environment fallbacks. OpenAI and Anthropic load
+their SDKs lazily. Ollama and Ollama Cloud share the native `/api/chat`
+implementation. Calls are non-streaming and do not retry automatically.
+
+## Available models
+
+```ts
+const catalog = await router.listModels({ provider: "ollama" });
+catalog.models.map((model) => model.id); // IDs accepted by that provider
+catalog.provider;                     // Registry name used for this query
+catalog.raw;                          // Native model-list data
+catalog.meta;                         // startedAt, endedAt, durationMs
+```
+
+All four built-in providers support discovery using their configured credentials,
+base URL and transport. OpenAI and Anthropic use their native models endpoints;
+Anthropic pages are fetched automatically. Ollama and Ollama Cloud use native
+`/api/tags`: local Ollama reports available installed models, while the cloud host
+reports its cloud catalog.
+
+`RouterModelsResponse` contains `provider`, `models`, `raw`, and `meta`. Each
+`RouterModel` has an `id` and native `raw` metadata. Optional common fields include
+`name`, `createdAt`, `modifiedAt`, `ownedBy`, `maxInputTokens`, `maxOutputTokens`, and
+`sizeBytes`, populated only when the provider reports them. OpenAI creation times
+are converted from Unix seconds to ISO 8601; Ollama modification times are kept
+separate from creation times. Anthropic's list `raw` groups payloads under
+`pages`; SDK clients and request state are excluded from all model-list responses.
+
+Models may include optional `costs: RouterModelCosts` with any known rates:
+`inputPerMillionTokens`, `outputPerMillionTokens`, `cachedInputPerMillionTokens`,
+`cacheWritePerMillionTokens`, and `perRequest`. Each rate is a `RouterCost` object
+containing `currency` (an ISO 4217 code such as `USD`) and `amount` (a non-negative
+integer in the currency's smallest denomination, e.g. cents for USD). Token rates
+apply per 1,000,000 tokens; `perRequest` is a separate fee per request. For example,
+this hypothetical rate is USD 2.50 per million input tokens:
+
+```ts
+const costs: RouterModelCosts = {
+  inputPerMillionTokens: { currency: "USD", amount: 250 },
+};
+```
+
+Omitted rates mean unknown, while an explicit `amount: 0` means free. Providers can return partial
+pricing metadata; built-in adapters currently omit costs because their model-list
+responses do not supply these rates. No prices are inferred or fetched separately.
+This metadata describes rates and does not calculate a completion's actual charge.
+
+Catalogs can be empty, and discovery does not guarantee that every listed model
+supports chat completions. This catalog is canonical metadata; completion dialect
+converters and token usage do not apply to model discovery.
+
+Custom providers can implement optional
+`listModels(): Promise<ProviderModelsResponse>`, returning canonical model entries
+and native list data. Completion-only providers keep working and throw
+`UnsupportedFeatureError` if discovery is requested. Provider names remain
+inferred from the startup registry; unknown providers throw `UnknownProviderError`.
 
 ## Native input, canonical response
 

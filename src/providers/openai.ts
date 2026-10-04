@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
 import { RouterError } from "../errors.js";
-import type { ProviderAdapter, ProviderConfig, ProviderRequest, ProviderResponse } from "../types.js";
+import type { ProviderAdapter, ProviderConfig, ProviderRequest, ProviderResponse, ProviderModelsResponse } from "../types.js";
 import { baselineToOpenAIInput, openAIOutputToBaseline } from "../dialects/openai.js";
 
 export class OpenAIProvider implements ProviderAdapter {
@@ -25,5 +25,18 @@ export class OpenAIProvider implements ProviderAdapter {
     const client = await this.getClient();
     const raw = await client.chat.completions.create({ ...input, model: req.model, stream: false });
     return { output: openAIOutputToBaseline(raw), raw };
+  }
+
+  async listModels(): Promise<ProviderModelsResponse> {
+    const client = await this.getClient();
+    const page = await client.models.list();
+    return {
+      models: page.data.map((model) => ({
+        id: model.id, ownedBy: model.owned_by,
+        createdAt: new Date(model.created * 1000).toISOString(), raw: model,
+      })),
+      // Serializing the SDK Page would expose internal request/client state.
+      raw: { object: page.object, data: page.data },
+    };
   }
 }
