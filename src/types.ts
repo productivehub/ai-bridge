@@ -12,9 +12,67 @@ export interface ProviderResponse {
   raw: unknown;
 }
 
+/** A monetary amount expressed in the currency's smallest denomination. */
+export interface RouterCost {
+  /** ISO 4217 currency code, e.g. "USD". */
+  currency: string;
+  /** Non-negative integer in minor units: 250 means USD 2.50 when currency is "USD". */
+  amount: number;
+}
+
+/** Model pricing. Omitted rates are unknown; an amount of zero means free. */
+export interface RouterModelCosts {
+  /** Cost per 1,000,000 tokens, rather than per token. */
+  inputPerMillionTokens?: RouterCost;
+  outputPerMillionTokens?: RouterCost;
+  cachedInputPerMillionTokens?: RouterCost;
+  cacheWritePerMillionTokens?: RouterCost;
+  /** Cost per request, when a separate request fee applies. */
+  perRequest?: RouterCost;
+}
+
+/** A provider-reported model; absent metadata is not inferred. */
+export interface RouterModel {
+  id: string;
+  name?: string;
+  createdAt?: string;
+  modifiedAt?: string;
+  ownedBy?: string;
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
+  sizeBytes?: number;
+  /** Optional pricing metadata, not a calculated charge for a completion. */
+  costs?: RouterModelCosts;
+  /** Native model metadata, including capabilities without a canonical equivalent. */
+  raw: unknown;
+}
+
+export interface ProviderModelsResponse {
+  models: RouterModel[];
+  /** Native list payload(s). SDK page/client state must not be included. */
+  raw: unknown;
+}
+
+export interface ListModelsRequest<P extends string = string> {
+  provider: P;
+}
+
+export interface RouterResponseMeta {
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+}
+
+export interface RouterModelsResponse extends ProviderModelsResponse {
+  provider: string;
+  meta: RouterResponseMeta;
+}
+
 /** Providers only communicate their API into the router baseline. */
 export interface ProviderAdapter {
   complete(req: ProviderRequest): Promise<ProviderResponse>;
+  /** Optional so completion-only custom adapters remain compatible. */
+  listModels?(): Promise<ProviderModelsResponse>;
 }
 
 /** A response-only dialect needs only fromBaseline; input conversion is optional. */
@@ -40,7 +98,7 @@ export interface RouterResponse<D extends DialectRegistry = DialectRegistry> {
   usage: RouterUsage;
   raw: unknown;
   /** Router-observed timestamps and monotonic elapsed duration. */
-  meta: { startedAt: string; endedAt: string; durationMs: number };
+  meta: RouterResponseMeta;
   /** Native response projection. Full information remains in output/raw. */
   toDialect<K extends keyof D & string>(dialect: K): DialectOutput<D[K]>;
 }

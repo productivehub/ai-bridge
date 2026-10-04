@@ -17,7 +17,21 @@ const res = await router.complete({
 const claude = res.toDialect("anthropic");
 ```
 
-Every call returns the canonical `RouterResponse`. `output` and `usage` are the router's own types; `raw` retains the provider response; `meta` reports router-observed start/end timestamps and monotonic elapsed duration. `toDialect(name)` lazily projects `output` into a target response shape, with a return type inferred from the injected converter. It does not make another API call.
+Every completion returns the canonical `RouterResponse`. `output` and `usage` are the router's own types; `raw` retains the provider response; `meta` reports router-observed start/end timestamps and monotonic elapsed duration. `toDialect(name)` lazily projects `output` into a target response shape, with a return type inferred from the injected converter. It does not make another API call.
+
+`router.listModels({ provider })` dispatches optional provider discovery and returns
+`RouterModelsResponse { provider, models, raw, meta }`. Model entries use the
+SDK-free `RouterModel` contract; vendor capabilities remain in each model's `raw`.
+Optional `costs: RouterModelCosts` records input/output/cached-input/cache-write rates
+per million tokens and a separate per-request fee. Each rate uses the reusable
+`RouterCost { currency, amount }` contract, where `amount` is a non-negative integer
+in the currency's smallest denomination (cents for USD). Missing rates are unknown,
+an amount of zero is free, and discovery does not infer pricing or calculate charges.
+Discovery is separate from completion dialect conversion and token accounting.
+Adapters without discovery throw `UnsupportedFeatureError`; their completion
+contract remains unchanged. OpenAI uses Models through its SDK; Anthropic uses
+its SDK Models API and fetches all pages; both Ollama adapters use `/api/tags`.
+Model-list payloads exclude SDK clients and internal request state.
 
 Requests default to the `router` baseline. A registered dialect can optionally implement `toBaseline` to accept native inputs. This request conversion belongs to the router, not to providers.
 
@@ -42,10 +56,10 @@ caller ◀── RouterResponse { output: RouterOutput, usage, raw, meta }
 - `src/types.ts`: SDK-free generic contracts for provider/dialect registries, requests and responses. It does not enumerate provider or native dialect names.
 - `src/baseline.ts`: the canonical input, messages, blocks, tools, output choices and usage. Defined independently of vendor SDKs.
 - `src/router.ts`: instance-local registries, request conversion, dispatch, response wrapping and timing. The intrinsic `router` dialect is reserved.
-- `src/providers/`: built-in provider communication. Every provider implements `complete(ProviderRequest): Promise<ProviderResponse>` and only accepts/returns the canonical baseline. Four opt-in providers: OpenAI, Anthropic, local Ollama and Ollama Cloud. The latter two share one native implementation.
+- `src/providers/`: built-in provider communication. Every provider implements `complete(ProviderRequest): Promise<ProviderResponse>` and only accepts/returns the canonical baseline. Optional `listModels()` returns canonical model metadata and native list data. Four opt-in providers: OpenAI, Anthropic, local Ollama and Ollama Cloud. The latter two share native chat, model discovery and connection handling.
 - `src/dialects/`: conversions between baseline and vendor shapes. The OpenAI and Anthropic modules also contain the wire mappings their provider implementations reuse. The Ollama dialect is a response converter; its module contains mappings for the native provider API.
 
-Providers and dialects are passed to `createRouter` at startup as named objects. Custom names, implementations, inputs and outputs require no central union changes. There is no global registration API. `createBuiltInProviders` is an optional convenience defined in the providers folder. Provider credentials and SDK clients are initialized only when used.
+Providers and dialects are passed to `createRouter` at startup as named objects. Custom names, implementations, inputs and outputs require no central union changes. There is no global registration API. `createBuiltInProviders` is an optional convenience defined in the providers folder. It captures configured keys and URLs at startup and omits unconfigured providers. Local Ollama requires an explicit URL. SDK clients are initialized only when used.
 
 ## Why our own baseline
 
