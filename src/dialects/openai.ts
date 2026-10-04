@@ -112,7 +112,10 @@ function toPart(block: ContentBlock): Part {
     case "image": {
       if (block.source.type === "file") return unsupported("openai", "image file id");
       const url = block.source.type === "url" ? block.source.url : `data:${block.source.mediaType};base64,${block.source.data}`;
-      return { ...extra, type: "image_url", image_url: { url, ...(block.detail ? { detail: block.detail } : {}) } };
+      // New SDKs add "original"; keep the baseline compatible with earlier SDK types.
+      return { ...extra, type: "image_url", image_url: { url, ...(block.detail ? {
+        detail: block.detail as OpenAI.Chat.Completions.ChatCompletionContentPartImage["image_url"]["detail"] & string,
+      } : {}) } };
     }
     case "audio": return { ...extra, type: "input_audio", input_audio: { data: block.data, format: block.format } };
     case "document": {

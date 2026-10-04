@@ -22,7 +22,7 @@ interface BlockMetadata {
 
 export type ContentBlock = BlockMetadata & (
   | { type: "text"; text: string; citations?: unknown[] }
-  | { type: "image"; source: MediaSource; detail?: "auto" | "low" | "high" }
+  | { type: "image"; source: MediaSource; detail?: "auto" | "low" | "high" | "original" }
   | { type: "document"; source: MediaSource; name?: string }
   | { type: "audio"; data: string; format: "wav" | "mp3" }
   | { type: "thinking"; text: string; signature?: string }

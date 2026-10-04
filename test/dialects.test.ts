@@ -130,6 +130,13 @@ describe("dialect conversion", () => {
     expect(baselineToAnthropicInput(canonical).messages[0]).toMatchObject({ content: [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: "cGRm" } }] });
   });
 
+  it("accepts original image detail from newer OpenAI SDKs", () => {
+    const input: RouterInput = { messages: [{ role: "user", content: [{ type: "image", source: { type: "url", url: "https://example.com/image.png" }, detail: "original" }] }] };
+    const native = baselineToOpenAIInput(input);
+    expect(native.messages[0]).toMatchObject({ content: [{ type: "image_url", image_url: { detail: "original" } }] });
+    expect(openAIInputToBaseline(native).messages[0]!.content).toContainEqual(expect.objectContaining({ detail: "original" }));
+  });
+
   it("does not relabel text documents as PDFs", () => {
     const canonical: RouterInput = { messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", mediaType: "text/plain", data: "aGVsbG8=" } }] }] };
     expect(baselineToAnthropicInput(canonical).messages[0]).toMatchObject({ content: [{ type: "document", source: { type: "text", media_type: "text/plain", data: "hello" } }] });
