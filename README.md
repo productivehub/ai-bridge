@@ -4,6 +4,10 @@ An extensible AI router with its own provider-neutral `router` dialect. Provider
 
 Created and maintained by [Segev Shmueli](https://github.com/segevsh) (`@segevsh`) as part of [productiveHub](https://github.com/productivehub).
 
+Browse the [wiki source pages](./docs/wiki/Home.md) for setup, configuration,
+providers, dialects, model discovery, costs, and the API reference. Publication
+instructions are in [Maintaining the Wiki](./docs/wiki/Maintaining-the-Wiki.md).
+
 ## Getting started
 
 The package uses ESM and requires Node.js 22 or later. From a standalone checkout:
