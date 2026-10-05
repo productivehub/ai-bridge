@@ -5,7 +5,7 @@ import type { OpenAIInput, AnthropicInput } from "./types.js";
 import { openAIInputToBaseline, baselineToOpenAIOutput } from "./openai.js";
 import { anthropicInputToBaseline, baselineToAnthropicOutput } from "./anthropic.js";
 
-export { routerDialect } from "./router.js";
+export { bridgeDialect } from "./bridge.js";
 
 export const openaiDialect = {
   toBaseline: openAIInputToBaseline,

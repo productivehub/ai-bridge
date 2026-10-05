@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createRouter, createBuiltInProviders, OpenAIProvider, AnthropicProvider, OllamaProvider, OllamaCloudProvider, ProviderHttpError, RouterError, UnsupportedFeatureError, openaiDialect, anthropicDialect, ollamaDialect } from "../src/index.js";
+import { createBridge, createBuiltInProviders, OpenAIProvider, AnthropicProvider, OllamaProvider, OllamaCloudProvider, ProviderHttpError, BridgeError, UnsupportedFeatureError, openaiDialect, anthropicDialect, ollamaDialect } from "../src/index.js";
 import { openaiResponse, anthropicResponse, ollamaResponse, transport } from "./fixtures.js";
-import type { RouterInput } from "../src/index.js";
+import type { BridgeInput } from "../src/index.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
-const input: RouterInput = { messages: [{ role: "user", content: "hi" }], maxOutputTokens: 32 };
+const input: BridgeInput = { messages: [{ role: "user", content: "hi" }], maxOutputTokens: 32 };
 
 describe("built-in providers", () => {
   it("registers only providers with configured keys or a local base URL", () => {
     expect(createBuiltInProviders({}, {})).toEqual({});
-    const router = createRouter({ providers: createBuiltInProviders({}, { OPENAI_API_KEY: "openai", ANTHROPIC_API_KEY: "anthropic", OLLAMA_BASE_URL: "http://localhost:11434", OLLAMA_CLOUD_API_KEY: "cloud" }) });
-    expect(router.providers()).toEqual(["openai", "anthropic", "ollama", "ollama-cloud"]);
+    const bridge = createBridge({ providers: createBuiltInProviders({}, { OPENAI_API_KEY: "openai", ANTHROPIC_API_KEY: "anthropic", OLLAMA_BASE_URL: "http://localhost:11434", OLLAMA_CLOUD_API_KEY: "cloud" }) });
+    expect(bridge.providers()).toEqual(["openai", "anthropic", "ollama", "ollama-cloud"]);
   });
   it("does not enable Ollama implicitly and ignores empty settings", () => {
     expect(createBuiltInProviders({}, { OPENAI_API_KEY: "", OLLAMA_BASE_URL: "  " })).toEqual({});
@@ -25,8 +25,8 @@ describe("built-in providers", () => {
     const native = name === "openai" ? openaiResponse : name === "anthropic" ? anthropicResponse : ollamaResponse;
     const http = transport(native);
     const providers = createBuiltInProviders({ [name]: { apiKey: "test-key", baseURL: "http://provider.test", fetch: http.fetch } }, {});
-    const router = createRouter({ providers, dialects: { openai: openaiDialect, anthropic: anthropicDialect, ollama: ollamaDialect } });
-    const res = await router.complete({ provider: name, model: "test-model", input });
+    const bridge = createBridge({ providers, dialects: { openai: openaiDialect, anthropic: anthropicDialect, ollama: ollamaDialect } });
+    const res = await bridge.complete({ provider: name, model: "test-model", input });
     expect(http.calls).toHaveLength(1);
     expect(http.calls[0]!.url).toBe(`http://provider.test${name === "openai" ? "/chat/completions" : name === "anthropic" ? "/v1/messages" : "/api/chat"}`);
     expect(http.calls[0]!.body).toMatchObject({ model: "test-model", stream: false });
@@ -44,8 +44,8 @@ describe("built-in providers", () => {
 
   it("retains Anthropic signed thinking and cache accounting while OpenAI projection stays native", async () => {
     const http = transport(anthropicResponse);
-    const router = createRouter({ providers: { anthropic: new AnthropicProvider({ apiKey: "key", fetch: http.fetch }) }, dialects: { anthropic: anthropicDialect, openai: openaiDialect } });
-    const res = await router.complete({ provider: "anthropic", model: "test-model", input });
+    const bridge = createBridge({ providers: { anthropic: new AnthropicProvider({ apiKey: "key", fetch: http.fetch }) }, dialects: { anthropic: anthropicDialect, openai: openaiDialect } });
+    const res = await bridge.complete({ provider: "anthropic", model: "test-model", input });
     expect(res.usage).toMatchObject({ inputTokens: 18, outputTokens: 4, totalTokens: 22, cacheWriteTokens: 5, cachedInputTokens: 3, reasoningTokens: 2 });
     expect(res.output.choices[0]!.message.content).toContainEqual(expect.objectContaining({ type: "thinking", signature: "signed" }));
     expect(res.toDialect("anthropic")).toEqual(anthropicResponse);
@@ -55,8 +55,8 @@ describe("built-in providers", () => {
 
   it("uses Ollama native runtime settings and retains nanosecond timings", async () => {
     const http = transport(ollamaResponse);
-    const router = createRouter({ providers: { local: new OllamaProvider({ fetch: http.fetch, baseURL: "http://local.test/api/" }) }, dialects: { ollama: ollamaDialect } });
-    const res = await router.complete({ provider: "local", model: "test-model", input: { ...input, keepAlive: "5m", runtimeOptions: { num_ctx: 8192 }, reasoning: { mode: "enabled" }, responseFormat: { type: "json" } } });
+    const bridge = createBridge({ providers: { local: new OllamaProvider({ fetch: http.fetch, baseURL: "http://local.test/api/" }) }, dialects: { ollama: ollamaDialect } });
+    const res = await bridge.complete({ provider: "local", model: "test-model", input: { ...input, keepAlive: "5m", runtimeOptions: { num_ctx: 8192 }, reasoning: { mode: "enabled" }, responseFormat: { type: "json" } } });
     expect(http.calls[0]!.url).toBe("http://local.test/api/chat");
     expect(http.calls[0]!.body).toMatchObject({ keep_alive: "5m", think: true, format: "json", options: { num_ctx: 8192, num_predict: 32 } });
     expect(res.usage.timings).toEqual({ totalMs: 20, loadMs: 2, promptMs: 5, generationMs: 13 });
@@ -65,9 +65,9 @@ describe("built-in providers", () => {
 
   it.each(["openai", "anthropic"] as const)("accepts %s native input through the same Ollama provider", async (dialect) => {
     const http = transport(ollamaResponse);
-    const router = createRouter({ providers: { local: new OllamaProvider({ fetch: http.fetch }) }, dialects: { openai: openaiDialect, anthropic: anthropicDialect } });
-    if (dialect === "openai") await router.complete({ provider: "local", model: "test-model", dialect, input: { messages: [{ role: "user", content: "hi" }], max_completion_tokens: 32 } });
-    else await router.complete({ provider: "local", model: "test-model", dialect, input: { messages: [{ role: "user", content: "hi" }], max_tokens: 32 } });
+    const bridge = createBridge({ providers: { local: new OllamaProvider({ fetch: http.fetch }) }, dialects: { openai: openaiDialect, anthropic: anthropicDialect } });
+    if (dialect === "openai") await bridge.complete({ provider: "local", model: "test-model", dialect, input: { messages: [{ role: "user", content: "hi" }], max_completion_tokens: 32 } });
+    else await bridge.complete({ provider: "local", model: "test-model", dialect, input: { messages: [{ role: "user", content: "hi" }], max_tokens: 32 } });
     expect(http.calls[0]!.body).toMatchObject({ options: { num_predict: 32 }, messages: [{ role: "user", content: "hi" }] });
   });
 
@@ -75,15 +75,15 @@ describe("built-in providers", () => {
     const openai = transport(openaiResponse);
     const anthropic = transport(anthropicResponse);
     const cloud = transport(ollamaResponse);
-    const router = createRouter({ providers: {
+    const bridge = createBridge({ providers: {
       openai: new OpenAIProvider({ fetch: openai.fetch }), anthropic: new AnthropicProvider({ fetch: anthropic.fetch }), cloud: new OllamaCloudProvider({ fetch: cloud.fetch }),
     } });
     vi.stubEnv("OPENAI_API_KEY", "openai-env"); vi.stubEnv("OPENAI_BASE_URL", "http://openai-env.test/v1");
     vi.stubEnv("ANTHROPIC_API_KEY", "anthropic-env"); vi.stubEnv("ANTHROPIC_BASE_URL", "http://anthropic-env.test");
     vi.stubEnv("OLLAMA_CLOUD_API_KEY", "cloud-env"); vi.stubEnv("OLLAMA_CLOUD_BASE_URL", "http://cloud-env.test");
-    await router.complete({ provider: "openai", model: "test-model", input });
-    await router.complete({ provider: "anthropic", model: "test-model", input });
-    await router.complete({ provider: "cloud", model: "test-model", input });
+    await bridge.complete({ provider: "openai", model: "test-model", input });
+    await bridge.complete({ provider: "anthropic", model: "test-model", input });
+    await bridge.complete({ provider: "cloud", model: "test-model", input });
     expect(openai.calls[0]!.url).toBe("http://openai-env.test/v1/chat/completions");
     expect(openai.calls[0]!.headers.get("authorization")).toBe("Bearer openai-env");
     expect(anthropic.calls[0]!.url).toBe("http://anthropic-env.test/v1/messages");
@@ -101,11 +101,11 @@ describe("built-in providers", () => {
   it("requires an Ollama Cloud key and reports provider HTTP errors without retries", async () => {
     vi.stubEnv("OLLAMA_CLOUD_API_KEY", ""); vi.stubEnv("OLLAMA_API_KEY", "");
     const http = transport({ error: "denied" }, 401);
-    await expect(new OllamaCloudProvider({ fetch: http.fetch }).complete({ model: "test-model", input })).rejects.toBeInstanceOf(RouterError);
+    await expect(new OllamaCloudProvider({ fetch: http.fetch }).complete({ model: "test-model", input })).rejects.toBeInstanceOf(BridgeError);
     expect(http.calls).toHaveLength(0);
     await expect(new OllamaCloudProvider({ apiKey: "key", fetch: http.fetch }).complete({ model: "test-model", input })).rejects.toMatchObject({ status: 401 });
     expect(http.calls).toHaveLength(1);
-    expect(ProviderHttpError.prototype).toBeInstanceOf(RouterError);
+    expect(ProviderHttpError.prototype).toBeInstanceOf(BridgeError);
   });
 
   it.each(["openai", "anthropic"] as const)("propagates %s SDK errors without automatic retries", async (name) => {
@@ -134,8 +134,8 @@ describe("built-in providers", () => {
   it("preserves missing usage as null instead of inventing zeros", async () => {
     const { usage: _usage, ...withoutUsage } = openaiResponse;
     const http = transport(withoutUsage);
-    const router = createRouter({ providers: { openai: new OpenAIProvider({ apiKey: "key", fetch: http.fetch }) }, dialects: { openai: openaiDialect, anthropic: anthropicDialect } });
-    const res = await router.complete({ provider: "openai", model: "test-model", input });
+    const bridge = createBridge({ providers: { openai: new OpenAIProvider({ apiKey: "key", fetch: http.fetch }) }, dialects: { openai: openaiDialect, anthropic: anthropicDialect } });
+    const res = await bridge.complete({ provider: "openai", model: "test-model", input });
     expect(res.usage).toEqual({ inputTokens: null, outputTokens: null, totalTokens: null });
     expect(res.toDialect("openai").usage).toBeUndefined();
     expect(() => res.toDialect("anthropic")).toThrow(UnsupportedFeatureError);

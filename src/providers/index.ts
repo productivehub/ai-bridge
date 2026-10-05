@@ -1,4 +1,4 @@
-/** Built-ins are opt-in; the router core has no provider registry or SDK imports. */
+/** Built-ins are opt-in; the bridge core has no provider registry or SDK imports. */
 import { OpenAIProvider } from "./openai.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OllamaProvider, OllamaCloudProvider } from "./ollama.js";

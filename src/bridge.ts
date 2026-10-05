@@ -1,26 +1,26 @@
-import { RouterError, UnknownDialectError, UnknownProviderError, UnsupportedFeatureError } from "./errors.js";
-import { routerDialect } from "./dialects/router.js";
-import type { RouterInput } from "./baseline.js";
+import { BridgeError, UnknownDialectError, UnknownProviderError, UnsupportedFeatureError } from "./errors.js";
+import { bridgeDialect } from "./dialects/bridge.js";
+import type { BridgeInput } from "./baseline.js";
 import type {
   DialectInput, DialectOutput, DialectRegistry, DialectService, ProviderRegistry,
-  RouteRequest, RouterConfig, RouterResponse, ListModelsRequest, RouterModelsResponse,
+  BridgeRequest, BridgeConfig, BridgeResponse, ListModelsRequest, BridgeModelsResponse,
 } from "./types.js";
 
-type WithBaseline<D extends DialectRegistry> = D & { router: typeof routerDialect };
+type WithBaseline<D extends DialectRegistry> = D & { bridge: typeof bridgeDialect };
 
-export interface Router<P extends ProviderRegistry = ProviderRegistry, D extends DialectRegistry = DialectRegistry> {
-  complete(req: RouteRequest<keyof P & string, WithBaseline<D>>): Promise<RouterResponse<WithBaseline<D>>>;
-  listModels(req: ListModelsRequest<keyof P & string>): Promise<RouterModelsResponse>;
+export interface Bridge<P extends ProviderRegistry = ProviderRegistry, D extends DialectRegistry = DialectRegistry> {
+  complete(req: BridgeRequest<keyof P & string, WithBaseline<D>>): Promise<BridgeResponse<WithBaseline<D>>>;
+  listModels(req: ListModelsRequest<keyof P & string>): Promise<BridgeModelsResponse>;
   providers(): (keyof P & string)[];
   dialects(): (keyof WithBaseline<D> & string)[];
 }
 
 /** Startup injection creates isolated registries; there is no shared global state. */
-export function createRouter<const P extends ProviderRegistry, const D extends DialectRegistry = {}>(config: RouterConfig<P, D>): Router<P, D> {
+export function createBridge<const P extends ProviderRegistry, const D extends DialectRegistry = {}>(config: BridgeConfig<P, D>): Bridge<P, D> {
   const providers = new Map(Object.entries(config.providers));
-  if (config.dialects && "router" in config.dialects) throw new RouterError('"router" is the built-in baseline dialect');
+  if (config.dialects && "bridge" in config.dialects) throw new BridgeError('"bridge" is the built-in baseline dialect');
   const dialects = new Map<string, DialectService<never, unknown>>([
-    ["router", routerDialect], ...Object.entries(config.dialects ?? {}),
+    ["bridge", bridgeDialect], ...Object.entries(config.dialects ?? {}),
   ]);
 
   function service(name: string): DialectService<unknown, unknown> {
@@ -47,16 +47,16 @@ export function createRouter<const P extends ProviderRegistry, const D extends D
       const start = performance.now();
       const provider = providers.get(req.provider);
       if (!provider) throw new UnknownProviderError(req.provider);
-      let input: RouterInput;
-      if (req.dialect === undefined) input = req.input as RouterInput;
+      let input: BridgeInput;
+      if (req.dialect === undefined) input = req.input as BridgeInput;
       else {
         const converter = service(req.dialect);
         if (!converter.toBaseline) throw new UnsupportedFeatureError(req.dialect, "input conversion (response-only dialect)");
         input = converter.toBaseline(req.input as DialectInput<typeof converter>);
       }
       const result = await provider.complete({ model: req.model, input });
-      const response: RouterResponse<WithBaseline<D>> = {
-        provider: req.provider, model: req.model, dialect: "router",
+      const response: BridgeResponse<WithBaseline<D>> = {
+        provider: req.provider, model: req.model, dialect: "bridge",
         output: result.output, usage: result.output.usage, raw: result.raw,
         meta: { startedAt, endedAt: new Date().toISOString(), durationMs: performance.now() - start },
         toDialect<K extends keyof WithBaseline<D> & string>(name: K): DialectOutput<WithBaseline<D>[K]> {

@@ -1,15 +1,15 @@
-# Router (`packages/router`, npm name `@productivehub/router`)
+# AI Bridge (`@productivehub/ai-bridge`)
 
-An in-process TypeScript AI router with a provider-neutral baseline and injectable providers and dialects.
+An in-process TypeScript AI bridge with a provider-neutral baseline and injectable providers and dialects.
 
 ## Public API
 
 ```ts
-const router = createRouter({
+const bridge = createBridge({
   providers: createBuiltInProviders(),
   dialects: { openai: openaiDialect, anthropic: anthropicDialect },
 });
-const res = await router.complete({
+const res = await bridge.complete({
   provider: "ollama",
   model: "llama3.2",
   input: { messages: [{ role: "user", content: "Hello." }] },
@@ -17,14 +17,14 @@ const res = await router.complete({
 const claude = res.toDialect("anthropic");
 ```
 
-Every completion returns the canonical `RouterResponse`. `output` and `usage` are the router's own types; `raw` retains the provider response; `meta` reports router-observed start/end timestamps and monotonic elapsed duration. `toDialect(name)` lazily projects `output` into a target response shape, with a return type inferred from the injected converter. It does not make another API call.
+Every completion returns the canonical `BridgeResponse`. `output` and `usage` are the bridge's own types; `raw` retains the provider response; `meta` reports bridge-observed start/end timestamps and monotonic elapsed duration. `toDialect(name)` lazily projects `output` into a target response shape, with a return type inferred from the injected converter. It does not make another API call.
 
-`router.listModels({ provider })` dispatches optional provider discovery and returns
-`RouterModelsResponse { provider, models, raw, meta }`. Model entries use the
-SDK-free `RouterModel` contract; vendor capabilities remain in each model's `raw`.
-Optional `costs: RouterModelCosts` records input/output/cached-input/cache-write rates
+`bridge.listModels({ provider })` dispatches optional provider discovery and returns
+`BridgeModelsResponse { provider, models, raw, meta }`. Model entries use the
+SDK-free `BridgeModel` contract; vendor capabilities remain in each model's `raw`.
+Optional `costs: BridgeModelCosts` records input/output/cached-input/cache-write rates
 per million tokens and a separate per-request fee. Each rate uses the reusable
-`RouterCost { currency, amount }` contract, where `amount` is a non-negative integer
+`BridgeCost { currency, amount }` contract, where `amount` is a non-negative integer
 in the currency's smallest denomination (cents for USD). Missing rates are unknown,
 an amount of zero is free, and discovery does not infer pricing or calculate charges.
 Discovery is separate from completion dialect conversion and token accounting.
@@ -33,18 +33,18 @@ contract remains unchanged. OpenAI uses Models through its SDK; Anthropic uses
 its SDK Models API and fetches all pages; both Ollama adapters use `/api/tags`.
 Model-list payloads exclude SDK clients and internal request state.
 
-Requests default to the `router` baseline. A registered dialect can optionally implement `toBaseline` to accept native inputs. This request conversion belongs to the router, not to providers.
+Requests default to the `bridge` baseline. A registered dialect can optionally implement `toBaseline` to accept native inputs. This request conversion belongs to the bridge, not to providers.
 
 ## Architecture
 
 ```text
-caller input ── optional dialect.toBaseline ──▶ RouterInput
+caller input ── optional dialect.toBaseline ──▶ BridgeInput
                                                     │
                                         injected ProviderAdapter
                                                     │
                                              provider wire API
                                                     │
-caller ◀── RouterResponse { output: RouterOutput, usage, raw, meta }
+caller ◀── BridgeResponse { output: BridgeOutput, usage, raw, meta }
                      │
                 toDialect(name)
                      │
@@ -55,11 +55,11 @@ caller ◀── RouterResponse { output: RouterOutput, usage, raw, meta }
 
 - `src/types.ts`: SDK-free generic contracts for provider/dialect registries, requests and responses. It does not enumerate provider or native dialect names.
 - `src/baseline.ts`: the canonical input, messages, blocks, tools, output choices and usage. Defined independently of vendor SDKs.
-- `src/router.ts`: instance-local registries, request conversion, dispatch, response wrapping and timing. The intrinsic `router` dialect is reserved.
+- `src/bridge.ts`: instance-local registries, request conversion, dispatch, response wrapping and timing. The intrinsic `bridge` dialect is reserved.
 - `src/providers/`: built-in provider communication. Every provider implements `complete(ProviderRequest): Promise<ProviderResponse>` and only accepts/returns the canonical baseline. Optional `listModels()` returns canonical model metadata and native list data. Four opt-in providers: OpenAI, Anthropic, local Ollama and Ollama Cloud. The latter two share native chat, model discovery and connection handling.
 - `src/dialects/`: conversions between baseline and vendor shapes. The OpenAI and Anthropic modules also contain the wire mappings their provider implementations reuse. The Ollama dialect is a response converter; its module contains mappings for the native provider API.
 
-Providers and dialects are passed to `createRouter` at startup as named objects. Custom names, implementations, inputs and outputs require no central union changes. There is no global registration API. `createBuiltInProviders` is an optional convenience defined in the providers folder. It captures configured keys and URLs at startup and omits unconfigured providers. Local Ollama requires an explicit URL. SDK clients are initialized only when used.
+Providers and dialects are passed to `createBridge` at startup as named objects. Custom names, implementations, inputs and outputs require no central union changes. There is no global registration API. `createBuiltInProviders` is an optional convenience defined in the providers folder. It captures configured keys and URLs at startup and omits unconfigured providers. Local Ollama requires an explicit URL. SDK clients are initialized only when used.
 
 ## Why our own baseline
 
@@ -73,7 +73,7 @@ Request mappings reject unrepresentable features using `UnsupportedFeatureError`
 
 Response conversions return the selected vendor schema. Fields absent from that schema can be omitted from the projection but remain in canonical output and raw data. Multiple candidates cannot silently collapse into a single-message response. Unreported token usage stays null; required native usage fields are not fabricated. Some required native fields, such as an OpenAI creation timestamp when the source reports none, must be synthesized when projecting.
 
-Canonical usage counts input/output inclusively. Anthropic input totals sum ordinary input, cache reads and cache writes. Reasoning counts are a subset of output tokens. Ollama durations are converted from nanoseconds to milliseconds; router `meta.durationMs` measures the full call separately.
+Canonical usage counts input/output inclusively. Anthropic input totals sum ordinary input, cache reads and cache writes. Reasoning counts are a subset of output tokens. Ollama durations are converted from nanoseconds to milliseconds; bridge `meta.durationMs` measures the full call separately.
 
 ## First-release scope
 

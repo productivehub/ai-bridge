@@ -1,7 +1,7 @@
 import { UnsupportedFeatureError } from "../errors.js";
-import type { ContentBlock, NativeFields, RouterMessage, WireDialect } from "../baseline.js";
+import type { ContentBlock, NativeFields, BridgeMessage, WireDialect } from "../baseline.js";
 
-export function blocks(message: RouterMessage): ContentBlock[] {
+export function blocks(message: BridgeMessage): ContentBlock[] {
   return typeof message.content === "string"
     ? [{ type: "text", text: message.content }]
     : message.content;

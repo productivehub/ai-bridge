@@ -1,8 +1,8 @@
 {
-  "name": "@productivehub/router",
+  "name": "@productivehub/ai-bridge",
   "version": "0.1.0",
   "packageManager": "pnpm@11.24.0",
-  "description": "Extensible AI router with a provider-neutral baseline, injected providers and typed response dialects",
+  "description": "Call any AI model provider through one provider-neutral format, with injected providers and typed response dialects",
   "license": "MIT",
   "author": {
     "name": "Segev Shmueli",
@@ -16,11 +16,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/productivehub/router.git"
+    "url": "git+https://github.com/productivehub/ai-bridge.git"
   },
-  "homepage": "https://github.com/productivehub/router#readme",
+  "homepage": "https://github.com/productivehub/ai-bridge#readme",
   "bugs": {
-    "url": "https://github.com/productivehub/router/issues"
+    "url": "https://github.com/productivehub/ai-bridge/issues"
   },
   "engines": {
     "node": ">=22"

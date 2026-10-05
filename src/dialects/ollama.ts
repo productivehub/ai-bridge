@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ContentBlock, RouterInput, RouterMessage, RouterOutput, RouterUsage } from "../baseline.js";
+import type { ContentBlock, BridgeInput, BridgeMessage, BridgeOutput, BridgeUsage } from "../baseline.js";
 import type { DialectService } from "../types.js";
 import { blocks, extras, nativeFields, requestFields, requireAbsent, textOnly, toolInput, unsupported } from "./shared.js";
 
@@ -29,7 +29,7 @@ export interface OllamaOutput {
   [key: string]: unknown;
 }
 
-function toMessages(message: RouterMessage, toolNames: Map<string, string>): OllamaMessage[] {
+function toMessages(message: BridgeMessage, toolNames: Map<string, string>): OllamaMessage[] {
   const extra = requestFields(message.extensions, "ollama");
   if (message.name) unsupported("ollama", "named message");
   const content: string[] = [];
@@ -73,7 +73,7 @@ function toMessages(message: RouterMessage, toolNames: Map<string, string>): Oll
   return [...results, ...own];
 }
 
-export function baselineToOllamaInput(input: RouterInput): Record<string, unknown> {
+export function baselineToOllamaInput(input: BridgeInput): Record<string, unknown> {
   requireAbsent("ollama", input, ["cacheControl", "cacheKey", "cacheRetention", "parallelToolCalls"]);
   if (input.toolChoice !== undefined && input.toolChoice !== "auto") unsupported("ollama", "forced tool choice");
   if (input.candidates !== undefined && input.candidates !== 1) unsupported("ollama", "multiple candidates");
@@ -103,7 +103,7 @@ export function baselineToOllamaInput(input: RouterInput): Record<string, unknow
   };
 }
 
-export function ollamaOutputToBaseline(output: OllamaOutput): RouterOutput {
+export function ollamaOutputToBaseline(output: OllamaOutput): BridgeOutput {
   const id = `ollama-${randomUUID()}`;
   const content: ContentBlock[] = [];
   if (output.message.thinking) content.push({ type: "thinking", text: output.message.thinking });
@@ -114,7 +114,7 @@ export function ollamaOutputToBaseline(output: OllamaOutput): RouterOutput {
   });
   const inputTokens = output.prompt_eval_count ?? null;
   const outputTokens = output.eval_count ?? null;
-  const usage: RouterUsage = {
+  const usage: BridgeUsage = {
     inputTokens, outputTokens, totalTokens: inputTokens !== null && outputTokens !== null ? inputTokens + outputTokens : null,
     ...(output.prompt_eval_cached_count !== undefined ? { cachedInputTokens: output.prompt_eval_cached_count } : {}),
     timings: {
@@ -136,7 +136,7 @@ export function ollamaOutputToBaseline(output: OllamaOutput): RouterOutput {
   };
 }
 
-export function baselineToOllamaOutput(output: RouterOutput): OllamaOutput {
+export function baselineToOllamaOutput(output: BridgeOutput): OllamaOutput {
   if (output.choices.length !== 1) return unsupported("ollama", "multiple response candidates");
   const choice = output.choices[0]!;
   const content = blocks(choice.message);

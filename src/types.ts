@@ -1,19 +1,19 @@
 /** SDK-free contracts. Provider and dialect names come from injected registries. */
-import type { RouterInput, RouterOutput, RouterUsage } from "./baseline.js";
+import type { BridgeInput, BridgeOutput, BridgeUsage } from "./baseline.js";
 
 export interface ProviderRequest {
   model: string;
-  input: RouterInput;
+  input: BridgeInput;
 }
 
 export interface ProviderResponse {
-  output: RouterOutput;
+  output: BridgeOutput;
   /** Untouched wire response. */
   raw: unknown;
 }
 
 /** A monetary amount expressed in the currency's smallest denomination. */
-export interface RouterCost {
+export interface BridgeCost {
   /** ISO 4217 currency code, e.g. "USD". */
   currency: string;
   /** Non-negative integer in minor units: 250 means USD 2.50 when currency is "USD". */
@@ -21,18 +21,18 @@ export interface RouterCost {
 }
 
 /** Model pricing. Omitted rates are unknown; an amount of zero means free. */
-export interface RouterModelCosts {
+export interface BridgeModelCosts {
   /** Cost per 1,000,000 tokens, rather than per token. */
-  inputPerMillionTokens?: RouterCost;
-  outputPerMillionTokens?: RouterCost;
-  cachedInputPerMillionTokens?: RouterCost;
-  cacheWritePerMillionTokens?: RouterCost;
+  inputPerMillionTokens?: BridgeCost;
+  outputPerMillionTokens?: BridgeCost;
+  cachedInputPerMillionTokens?: BridgeCost;
+  cacheWritePerMillionTokens?: BridgeCost;
   /** Cost per request, when a separate request fee applies. */
-  perRequest?: RouterCost;
+  perRequest?: BridgeCost;
 }
 
 /** A provider-reported model; absent metadata is not inferred. */
-export interface RouterModel {
+export interface BridgeModel {
   id: string;
   name?: string;
   createdAt?: string;
@@ -42,13 +42,13 @@ export interface RouterModel {
   maxOutputTokens?: number;
   sizeBytes?: number;
   /** Optional pricing metadata, not a calculated charge for a completion. */
-  costs?: RouterModelCosts;
+  costs?: BridgeModelCosts;
   /** Native model metadata, including capabilities without a canonical equivalent. */
   raw: unknown;
 }
 
 export interface ProviderModelsResponse {
-  models: RouterModel[];
+  models: BridgeModel[];
   /** Native list payload(s). SDK page/client state must not be included. */
   raw: unknown;
 }
@@ -57,18 +57,18 @@ export interface ListModelsRequest<P extends string = string> {
   provider: P;
 }
 
-export interface RouterResponseMeta {
+export interface BridgeResponseMeta {
   startedAt: string;
   endedAt: string;
   durationMs: number;
 }
 
-export interface RouterModelsResponse extends ProviderModelsResponse {
+export interface BridgeModelsResponse extends ProviderModelsResponse {
   provider: string;
-  meta: RouterResponseMeta;
+  meta: BridgeResponseMeta;
 }
 
-/** Providers only communicate their API into the router baseline. */
+/** Providers only communicate their API into the bridge baseline. */
 export interface ProviderAdapter {
   complete(req: ProviderRequest): Promise<ProviderResponse>;
   /** Optional so completion-only custom adapters remain compatible. */
@@ -76,35 +76,32 @@ export interface ProviderAdapter {
 }
 
 /** A response-only dialect needs only fromBaseline; input conversion is optional. */
-export interface DialectService<Input = RouterInput, Output = unknown> {
-  toBaseline?(input: Input): RouterInput;
-  fromBaseline(output: RouterOutput): Output;
+export interface DialectService<Input = BridgeInput, Output = unknown> {
+  toBaseline?(input: Input): BridgeInput;
+  fromBaseline(output: BridgeOutput): Output;
 }
 
 export type ProviderRegistry = Readonly<Record<string, ProviderAdapter>>;
 export type DialectRegistry = Readonly<Record<string, DialectService<never, unknown>>>;
-export type DialectInput<T> = T extends { toBaseline(input: infer I): RouterInput } ? I : never;
-export type DialectOutput<T> = T extends { fromBaseline(output: RouterOutput): infer O } ? O : never;
+export type DialectInput<T> = T extends { toBaseline(input: infer I): BridgeInput } ? I : never;
+export type DialectOutput<T> = T extends { fromBaseline(output: BridgeOutput): infer O } ? O : never;
 
-export type RouteRequest<P extends string = string, D extends DialectRegistry = DialectRegistry> =
-  | { provider: P; model: string; input: RouterInput; dialect?: undefined }
+export type BridgeRequest<P extends string = string, D extends DialectRegistry = DialectRegistry> =
+  | { provider: P; model: string; input: BridgeInput; dialect?: undefined }
   | { [K in keyof D & string]: { provider: P; model: string; dialect: K; input: DialectInput<D[K]> } }[keyof D & string];
 
-export interface RouterResponse<D extends DialectRegistry = DialectRegistry> {
+export interface BridgeResponse<D extends DialectRegistry = DialectRegistry> {
   provider: string;
   model: string;
-  readonly dialect: "router";
-  output: RouterOutput;
-  usage: RouterUsage;
+  readonly dialect: "bridge";
+  output: BridgeOutput;
+  usage: BridgeUsage;
   raw: unknown;
-  /** Router-observed timestamps and monotonic elapsed duration. */
-  meta: RouterResponseMeta;
+  /** Bridge-observed timestamps and monotonic elapsed duration. */
+  meta: BridgeResponseMeta;
   /** Native response projection. Full information remains in output/raw. */
   toDialect<K extends keyof D & string>(dialect: K): DialectOutput<D[K]>;
 }
-
-/** @deprecated Use RouterResponse. */
-export type RouteResponse<D extends DialectRegistry = DialectRegistry> = RouterResponse<D>;
 
 /** Common connection options for built-ins; custom providers may define their own. */
 export interface ProviderConfig {
@@ -114,7 +111,7 @@ export interface ProviderConfig {
   timeoutMs?: number;
 }
 
-export interface RouterConfig<P extends ProviderRegistry = ProviderRegistry, D extends DialectRegistry = DialectRegistry> {
+export interface BridgeConfig<P extends ProviderRegistry = ProviderRegistry, D extends DialectRegistry = DialectRegistry> {
   providers: P;
   dialects?: D;
 }

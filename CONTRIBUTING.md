@@ -1,4 +1,4 @@
-# Contributing to @productivehub/router
+# Contributing to @productivehub/ai-bridge
 
 Contributions to providers, dialects, documentation and the canonical contract are welcome. See [AUTHORS.md](./AUTHORS.md) for ownership and project credits.
 
@@ -15,7 +15,7 @@ pnpm build
 
 Tests use injected transports and do not need real API keys or running model servers.
 
-Inside the `phub-director` monorepo, run `pnpm install` at the monorepo root and use `pnpm -F @productivehub/router <command>`.
+Inside the `phub-director` monorepo, run `pnpm install` at the monorepo root and use `pnpm -F @productivehub/ai-bridge <command>`.
 
 ## Implementation conventions
 
@@ -23,7 +23,7 @@ Inside the `phub-director` monorepo, run `pnpm install` at the monorepo root and
 - Keep the canonical types in `src/baseline.ts` and the public contracts in `src/types.ts` independent of vendor SDKs.
 - Put provider implementations in `src/providers/` and dialect converters in `src/dialects/`.
 - Providers accept and return the canonical baseline. Caller input and response dialect conversion belong to dialect services.
-- Keep registries injectable and local to each router instance. Custom providers and dialects must not require edits to a central name union.
+- Keep registries injectable and local to each bridge instance. Custom providers and dialects must not require edits to a central name union.
 - Preserve native response data in `raw` and unrepresented fields in canonical extensions. Reject unsupported request conversions explicitly.
 - For behavior changes, add focused tests using injected transports. Include compile-time checks when changing type inference or public contracts.
 

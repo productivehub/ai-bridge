@@ -1,6 +1,6 @@
 # Providers
 
-A provider handles communication with an upstream API and converts its response into `RouterOutput`. It accepts the canonical `RouterInput`, regardless of which response dialect the caller later requests.
+A provider handles communication with an upstream API and converts its response into `BridgeOutput`. It accepts the canonical `BridgeInput`, regardless of which response dialect the caller later requests.
 
 ## Built-in adapters
 
@@ -11,7 +11,7 @@ A provider handles communication with an upstream API and converts its response 
 | `OllamaProvider` | Native `/api/chat` | Native `/api/tags` |
 | `OllamaCloudProvider` | Native `/api/chat` with bearer authentication | Native `/api/tags` with bearer authentication |
 
-Classes are exported from both `@productivehub/router` and `@productivehub/router/providers`. Ollama Cloud shares the native Ollama implementation. Built-in requests are non-streaming, and SDK automatic retries are disabled.
+Classes are exported from both `@productivehub/ai-bridge` and `@productivehub/ai-bridge/providers`. Ollama Cloud shares the native Ollama implementation. Built-in requests are non-streaming, and SDK automatic retries are disabled.
 
 Built-in request mappings reject features they cannot express. Registering another response dialect does not make the upstream provider support additional request features.
 
@@ -23,12 +23,12 @@ This self-contained example uses a deterministic local adapter to show the contr
 
 ```ts
 import {
-  createRouter,
+  createBridge,
   type ProviderAdapter,
   type ProviderRequest,
   type ProviderResponse,
   type ProviderModelsResponse,
-} from "@productivehub/router";
+} from "@productivehub/ai-bridge";
 
 class ExampleProvider implements ProviderAdapter {
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
@@ -57,8 +57,8 @@ class ExampleProvider implements ProviderAdapter {
   }
 }
 
-const router = createRouter({ providers: { example: new ExampleProvider() } });
-const response = await router.complete({
+const bridge = createBridge({ providers: { example: new ExampleProvider() } });
+const response = await bridge.complete({
   provider: "example",
   model: "example-model",
   input: { messages: [{ role: "user", content: "Hello" }] },

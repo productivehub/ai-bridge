@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
 import type Anthropic from "@anthropic-ai/sdk";
-import type { RouterOutput, OllamaOutput } from "../src/index.js";
+import type { BridgeOutput, OllamaOutput } from "../src/index.js";
 
 export const openaiResponse: OpenAI.Chat.Completions.ChatCompletion = {
   id: "chat-1", object: "chat.completion", created: 1_700_000_000, model: "test-model",
@@ -29,7 +29,7 @@ export const ollamaResponse: OllamaOutput = {
   total_duration: 20_000_000, load_duration: 2_000_000, prompt_eval_duration: 5_000_000, eval_duration: 13_000_000,
 };
 
-export function baselineResponse(): RouterOutput {
+export function baselineResponse(): BridgeOutput {
   return { id: "test-1", model: "test-model", choices: [{ index: 0, message: { role: "assistant", content: "hello" }, finishReason: "stop" }],
     usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 } };
 }

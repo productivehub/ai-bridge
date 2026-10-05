@@ -12,7 +12,7 @@ if (destination === source) throw new Error("Export into a separate directory fr
 
 const names = (await readdir(source)).filter((name) => name.endsWith(".md")).sort();
 const pages = new Set(names);
-const baseURL = "https://github.com/productivehub/router/wiki";
+const baseURL = "https://github.com/productivehub/ai-bridge/wiki";
 
 // Read and validate every page before writing any destination files.
 const exported = await Promise.all(names.map(async (name) => {

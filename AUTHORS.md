@@ -2,11 +2,11 @@
 
 ## Owner and maintainer
 
-[Segev Shmueli](https://github.com/segevsh) (`@segevsh`) is the creator, owner and maintainer of `@productivehub/router`.
+[Segev Shmueli](https://github.com/segevsh) (`@segevsh`) is the creator, owner and maintainer of `@productivehub/ai-bridge`.
 
 ## Project organization
 
-`@productivehub/router` is a [productiveHub](https://github.com/productivehub) project.
+`@productivehub/ai-bridge` is a [productiveHub](https://github.com/productivehub) project.
 
 ## Contributors
 

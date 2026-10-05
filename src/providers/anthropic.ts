@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { RouterError } from "../errors.js";
-import type { ProviderAdapter, ProviderConfig, ProviderRequest, ProviderResponse, ProviderModelsResponse, RouterModel } from "../types.js";
+import { BridgeError } from "../errors.js";
+import type { ProviderAdapter, ProviderConfig, ProviderRequest, ProviderResponse, ProviderModelsResponse, BridgeModel } from "../types.js";
 import { baselineToAnthropicInput, anthropicOutputToBaseline } from "../dialects/anthropic.js";
 
 export class AnthropicProvider implements ProviderAdapter {
@@ -11,7 +11,7 @@ export class AnthropicProvider implements ProviderAdapter {
   private getClient(): Promise<Anthropic> {
     const config = this.config;
     const apiKey = config.apiKey ?? process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new RouterError("Anthropic requires apiKey or ANTHROPIC_API_KEY");
+    if (!apiKey) throw new BridgeError("Anthropic requires apiKey or ANTHROPIC_API_KEY");
     return this.client ??= import("@anthropic-ai/sdk").then(({ default: SDK }) => new SDK({
       apiKey, maxRetries: 0,
       ...(config.baseURL ? { baseURL: config.baseURL } : {}),
@@ -30,7 +30,7 @@ export class AnthropicProvider implements ProviderAdapter {
   async listModels(): Promise<ProviderModelsResponse> {
     const client = await this.getClient();
     const first = await client.models.list();
-    const models: RouterModel[] = [];
+    const models: BridgeModel[] = [];
     const pages: unknown[] = [];
     for await (const page of first.iterPages()) {
       pages.push({ data: page.data, has_more: page.has_more, first_id: page.first_id, last_id: page.last_id });
