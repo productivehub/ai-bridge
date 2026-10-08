@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AnthropicInput } from "./types.js";
-import type { ContentBlock, RouterInput, RouterMessage, RouterOutput, RouterTool, RouterUsage } from "../baseline.js";
+import type { ContentBlock, BridgeInput, BridgeMessage, BridgeOutput, BridgeTool, BridgeUsage } from "../baseline.js";
 import { blocks, extras, nativeFields, requestFields, requireAbsent, toolInput, unsupported } from "./shared.js";
 
 type Message = Anthropic.Messages.Message;
@@ -35,7 +35,7 @@ function fromBlock(block: NativeBlock | Anthropic.Messages.ContentBlock): Conten
   }
 }
 
-function fromTool(tool: Anthropic.Messages.ToolUnion): RouterTool {
+function fromTool(tool: Anthropic.Messages.ToolUnion): BridgeTool {
   if (!("input_schema" in tool) || (tool.type != null && tool.type !== "custom")) return { type: "native", dialect: "anthropic", value: { ...tool } };
   return { type: "function", name: tool.name, inputSchema: tool.input_schema,
     ...(tool.description !== undefined ? { description: tool.description } : {}),
@@ -44,15 +44,15 @@ function fromTool(tool: Anthropic.Messages.ToolUnion): RouterTool {
     extensions: nativeFields("anthropic", extras(tool, ["type", "name", "input_schema", "description", "strict", "cache_control"])) };
 }
 
-export function anthropicInputToBaseline(input: AnthropicInput): RouterInput {
-  const messages: RouterMessage[] = [];
+export function anthropicInputToBaseline(input: AnthropicInput): BridgeInput {
+  const messages: BridgeMessage[] = [];
   if (input.system !== undefined) messages.push({ role: "system", content: typeof input.system === "string" ? input.system : input.system.map(fromBlock) });
-  messages.push(...input.messages.map((message): RouterMessage => ({
+  messages.push(...input.messages.map((message): BridgeMessage => ({
     role: message.role, content: typeof message.content === "string" ? message.content : message.content.map(fromBlock),
     extensions: nativeFields("anthropic", extras(message, ["role", "content"])),
   })));
   const extra = extras(input, ["messages", "system", "max_tokens", "temperature", "top_p", "top_k", "stop_sequences", "tools", "tool_choice", "thinking", "output_config", "cache_control"]);
-  let reasoning: RouterInput["reasoning"];
+  let reasoning: BridgeInput["reasoning"];
   if (input.thinking && input.thinking.type !== "between_tools") {
     reasoning = {
       mode: input.thinking.type,
@@ -124,7 +124,7 @@ function toBlock(block: ContentBlock): NativeBlock {
   }
 }
 
-function toTool(tool: RouterTool): Anthropic.Messages.ToolUnion {
+function toTool(tool: BridgeTool): Anthropic.Messages.ToolUnion {
   if (tool.type === "native") return tool.dialect === "anthropic" ? tool.value as unknown as Anthropic.Messages.ToolUnion : unsupported("anthropic", `${tool.dialect} tool`);
   if (tool.inputSchema.type !== "object") return unsupported("anthropic", "non-object tool schema");
   return { ...requestFields(tool.extensions, "anthropic"), name: tool.name,
@@ -134,7 +134,7 @@ function toTool(tool: RouterTool): Anthropic.Messages.ToolUnion {
     ...(tool.cacheControl ? { cache_control: tool.cacheControl } : {}) };
 }
 
-export function baselineToAnthropicInput(input: RouterInput): AnthropicInput {
+export function baselineToAnthropicInput(input: BridgeInput): AnthropicInput {
   requireAbsent("anthropic", input, ["cacheKey", "cacheRetention", "seed", "keepAlive", "runtimeOptions"]);
   if (input.candidates !== undefined && input.candidates !== 1) unsupported("anthropic", "multiple candidates");
   const extra = requestFields(input.extensions, "anthropic");
@@ -189,7 +189,7 @@ export function baselineToAnthropicInput(input: RouterInput): AnthropicInput {
   };
 }
 
-export function anthropicUsageToBaseline(usage: NativeUsage): RouterUsage {
+export function anthropicUsageToBaseline(usage: NativeUsage): BridgeUsage {
   const inputTokens = usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
   return {
     inputTokens, outputTokens: usage.output_tokens, totalTokens: inputTokens + usage.output_tokens,
@@ -204,7 +204,7 @@ export function anthropicUsageToBaseline(usage: NativeUsage): RouterUsage {
   };
 }
 
-export function baselineToAnthropicUsage(usage: RouterUsage): NativeUsage {
+export function baselineToAnthropicUsage(usage: BridgeUsage): NativeUsage {
   if (usage.inputTokens === null || usage.outputTokens === null) return unsupported("anthropic", "unreported token usage (available as null in baseline)");
   return {
     ...usage.extensions?.anthropic,
@@ -218,7 +218,7 @@ export function baselineToAnthropicUsage(usage: RouterUsage): NativeUsage {
   };
 }
 
-export function anthropicOutputToBaseline(output: Message): RouterOutput {
+export function anthropicOutputToBaseline(output: Message): BridgeOutput {
   const finishReason = ({ end_turn: "stop", stop_sequence: "stop", max_tokens: "length", tool_use: "tool-calls", pause_turn: "pause", refusal: "refusal", model_context_window_exceeded: "context-limit" } as const)[output.stop_reason ?? "end_turn"];
   return {
     id: output.id, model: output.model,
@@ -243,7 +243,7 @@ function outputBlock(block: ContentBlock): Anthropic.Messages.ContentBlock | und
   }
 }
 
-export function baselineToAnthropicOutput(output: RouterOutput): Message {
+export function baselineToAnthropicOutput(output: BridgeOutput): Message {
   if (output.choices.length !== 1) return unsupported("anthropic", "multiple response candidates; select a baseline choice first");
   const choice = output.choices[0]!;
   return {

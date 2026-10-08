@@ -1,6 +1,6 @@
 # Dialects
 
-The `router` dialect is the canonical baseline. It is defined independently of vendor SDKs and includes common chat features plus provider-specific information that can be retained through tagged blocks and namespaced extensions.
+The `bridge` dialect is the canonical baseline. It is defined independently of vendor SDKs and includes common chat features plus provider-specific information that can be retained through tagged blocks and namespaced extensions.
 
 Providers communicate through this baseline. Dialects convert caller input into the baseline or project canonical output into the caller's requested format.
 
@@ -8,35 +8,35 @@ Providers communicate through this baseline. Dialects convert caller input into 
 
 | Name | Native request conversion | Response projection |
 | --- | --- | --- |
-| `router` | Canonical input | Canonical output, returned unchanged |
+| `bridge` | Canonical input | Canonical output, returned unchanged |
 | `openai` | OpenAI Chat Completions input | OpenAI Chat Completions response |
 | `anthropic` | Anthropic Messages input | Anthropic Messages response |
 | `ollama` | Response-only dialect | Native Ollama chat response |
 
-The router baseline is intrinsic. Inject `openaiDialect`, `anthropicDialect`, or `ollamaDialect` under the names you want to expose. Dialect names do not have to match provider names.
+The bridge baseline is intrinsic. Inject `openaiDialect`, `anthropicDialect`, or `ollamaDialect` under the names you want to expose. Dialect names do not have to match provider names.
 
 ## Convert a response
 
 ```ts
 import {
-  createRouter,
+  createBridge,
   OllamaProvider,
   anthropicDialect,
   openaiDialect,
-} from "@productivehub/router";
+} from "@productivehub/ai-bridge";
 
-const router = createRouter({
+const bridge = createBridge({
   providers: { local: new OllamaProvider({ baseURL: "http://localhost:11434" }) },
   dialects: { anthropic: anthropicDialect, openai: openaiDialect },
 });
 
-const response = await router.complete({
+const response = await bridge.complete({
   provider: "local",
   model: "llama3.2",
   input: { messages: [{ role: "user", content: "Hello" }] },
 });
 
-const canonical = response.toDialect("router");
+const canonical = response.toDialect("bridge");
 const anthropic = response.toDialect("anthropic");
 const openai = response.toDialect("openai");
 ```
@@ -45,27 +45,27 @@ const openai = response.toDialect("openai");
 
 ## Accept native input
 
-Set the request's `dialect` to a registered service with `toBaseline(input)`. Omit `dialect` for canonical input. The returned response still uses the router baseline; request conversion does not select the output projection.
+Set the request's `dialect` to a registered service with `toBaseline(input)`. Omit `dialect` for canonical input. The returned response still uses the bridge baseline; request conversion does not select the output projection.
 
-For example, an Anthropic request uses `max_tokens` and Anthropic message blocks. The router converts these to canonical input before dispatching to the selected provider. A response-only dialect cannot be used as the input dialect.
+For example, an Anthropic request uses `max_tokens` and Anthropic message blocks. The bridge converts these to canonical input before dispatching to the selected provider. A response-only dialect cannot be used as the input dialect.
 
 ## Add a custom response dialect
 
 ```ts
-import { createRouter, OllamaProvider, type RouterOutput } from "@productivehub/router";
+import { createBridge, OllamaProvider, type BridgeOutput } from "@productivehub/ai-bridge";
 
-const router = createRouter({
+const bridge = createBridge({
   providers: { local: new OllamaProvider({ baseURL: "http://localhost:11434" }) },
   dialects: {
     summary: {
-      fromBaseline(output: RouterOutput) {
+      fromBaseline(output: BridgeOutput) {
         return { id: output.id, choices: output.choices, usage: output.usage };
       },
     },
   },
 });
 
-const response = await router.complete({
+const response = await bridge.complete({
   provider: "local",
   model: "llama3.2",
   input: { messages: [{ role: "user", content: "Hello" }] },

@@ -34,14 +34,14 @@ export type ContentBlock = BlockMetadata & (
   | { type: "native"; dialect: WireDialect; value: Record<string, unknown> }
 );
 
-export interface RouterMessage {
+export interface BridgeMessage {
   role: "system" | "developer" | "user" | "assistant";
   content: string | ContentBlock[];
   name?: string;
   extensions?: NativeFields;
 }
 
-export type RouterTool =
+export type BridgeTool =
   | {
       type: "function";
       name: string;
@@ -53,14 +53,14 @@ export type RouterTool =
     }
   | { type: "native"; dialect: WireDialect; value: Record<string, unknown> };
 
-export interface RouterInput {
-  messages: RouterMessage[];
+export interface BridgeInput {
+  messages: BridgeMessage[];
   maxOutputTokens?: number;
   temperature?: number;
   topP?: number;
   topK?: number;
   stop?: string[];
-  tools?: RouterTool[];
+  tools?: BridgeTool[];
   toolChoice?: "auto" | "none" | "required" | { name: string };
   parallelToolCalls?: boolean;
   /** Effort and thinking mode are independent: providers support different controls. */
@@ -86,7 +86,7 @@ export interface RouterInput {
   extensions?: NativeFields;
 }
 
-export interface RouterUsage {
+export interface BridgeUsage {
   /** Inclusive counts; null means the provider did not report the value. */
   inputTokens: number | null;
   outputTokens: number | null;
@@ -111,20 +111,20 @@ export type FinishReason =
   | "stop" | "length" | "tool-calls" | "refusal" | "content-filter"
   | "pause" | "context-limit" | "unknown";
 
-export interface RouterChoice {
+export interface BridgeChoice {
   index: number;
-  message: RouterMessage & { role: "assistant" };
+  message: BridgeMessage & { role: "assistant" };
   finishReason: FinishReason;
   stopSequence?: string;
   logprobs?: unknown;
   extensions?: NativeFields;
 }
 
-export interface RouterOutput {
+export interface BridgeOutput {
   id: string;
   model: string;
   createdAt?: string;
-  choices: RouterChoice[];
-  usage: RouterUsage;
+  choices: BridgeChoice[];
+  usage: BridgeUsage;
   extensions?: NativeFields;
 }

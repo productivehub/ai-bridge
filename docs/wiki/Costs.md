@@ -1,14 +1,14 @@
 # Costs
 
-Model discovery can include optional pricing in `RouterModel.costs`. Prices are represented by the reusable `RouterCost` object:
+Model discovery can include optional pricing in `BridgeModel.costs`. Prices are represented by the reusable `BridgeCost` object:
 
 ```ts
-import type { RouterCost, RouterModelCosts, RouterModel } from "@productivehub/router";
+import type { BridgeCost, BridgeModelCosts, BridgeModel } from "@productivehub/ai-bridge";
 
-const inputRate: RouterCost = { currency: "USD", amount: 250 };
+const inputRate: BridgeCost = { currency: "USD", amount: 250 };
 
 // Hypothetical example rates, not prices for an actual provider.
-const costs: RouterModelCosts = {
+const costs: BridgeModelCosts = {
   inputPerMillionTokens: inputRate,
   outputPerMillionTokens: { currency: "USD", amount: 1000 },
   cachedInputPerMillionTokens: { currency: "USD", amount: 25 },
@@ -16,7 +16,7 @@ const costs: RouterModelCosts = {
   perRequest: { currency: "USD", amount: 0 },
 };
 
-const model: RouterModel = {
+const model: BridgeModel = {
   id: "example-model",
   costs,
   raw: { id: "example-model" },
@@ -39,8 +39,8 @@ The TypeScript contract uses `string` and `number`; it does not perform runtime 
 | `cacheWritePerMillionTokens` | 1,000,000 cache-write tokens |
 | `perRequest` | A separate fee for one request |
 
-Each field is an optional `RouterCost`; each object includes its own currency. Omit unknown rates, or omit `costs` entirely if no rates are available. An explicit `amount: 0` means free for that billing category.
+Each field is an optional `BridgeCost`; each object includes its own currency. Omit unknown rates, or omit `costs` entirely if no rates are available. An explicit `amount: 0` means free for that billing category.
 
-Built-in adapters currently omit costs because their model-list mappings do not receive these rates. The router does not maintain a hardcoded price catalog or fetch pricing separately. Custom providers can populate costs when their upstream response or integration supplies known rates.
+Built-in adapters currently omit costs because their model-list mappings do not receive these rates. The bridge does not maintain a hardcoded price catalog or fetch pricing separately. Custom providers can populate costs when their upstream response or integration supplies known rates.
 
 This contract describes model rates. It does not calculate or report the actual charge for a completion. Prices that depend on context size, service tier, cache lifetime, or other conditions should retain those details in `model.raw`; this flat rate object does not describe pricing tiers.

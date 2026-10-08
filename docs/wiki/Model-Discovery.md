@@ -1,15 +1,15 @@
 # Model Discovery
 
-Use `router.listModels({ provider })` to query the models reported by one registered provider or account. All built-in adapters convert their catalogs into the same `RouterModel` type.
+Use `bridge.listModels({ provider })` to query the models reported by one registered provider or account. All built-in adapters convert their catalogs into the same `BridgeModel` type.
 
 ```ts
-import { createRouter, OllamaProvider, type RouterModelsResponse } from "@productivehub/router";
+import { createBridge, OllamaProvider, type BridgeModelsResponse } from "@productivehub/ai-bridge";
 
-const router = createRouter({
+const bridge = createBridge({
   providers: { local: new OllamaProvider({ baseURL: "http://localhost:11434" }) },
 });
 
-const catalog: RouterModelsResponse = await router.listModels({ provider: "local" });
+const catalog: BridgeModelsResponse = await bridge.listModels({ provider: "local" });
 for (const model of catalog.models) {
   console.log(model.id, model.name, model.costs);
 }
@@ -21,9 +21,9 @@ console.log(catalog.provider, catalog.meta);
 | Field | Meaning |
 | --- | --- |
 | `provider` | The registered provider/account name used for the query |
-| `models` | Consistent `RouterModel[]` entries |
+| `models` | Consistent `BridgeModel[]` entries |
 | `raw` | Native list payloads, excluding SDK client and request state |
-| `meta` | Router-observed `startedAt`, `endedAt`, and `durationMs` |
+| `meta` | Bridge-observed `startedAt`, `endedAt`, and `durationMs` |
 
 ## Model fields
 
@@ -38,7 +38,7 @@ console.log(catalog.provider, catalog.meta);
 | `maxInputTokens` | No | Reported maximum input tokens |
 | `maxOutputTokens` | No | Reported maximum output tokens |
 | `sizeBytes` | No | Model size in bytes |
-| `costs` | No | Known pricing using `RouterModelCosts`; see [Costs](./Costs.md) |
+| `costs` | No | Known pricing using `BridgeModelCosts`; see [Costs](./Costs.md) |
 
 Absent metadata is not inferred. OpenAI's Unix creation timestamps are converted to ISO 8601. Anthropic supplies display names, creation times, and token limits when reported. Ollama supplies names, modification timestamps, and sizes when reported.
 

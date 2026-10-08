@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createRouter, createBuiltInProviders, OpenAIProvider, AnthropicProvider, OllamaProvider, OllamaCloudProvider,
-  UnknownProviderError, RouterError, ProviderHttpError,
+  createBridge, createBuiltInProviders, OpenAIProvider, AnthropicProvider, OllamaProvider, OllamaCloudProvider,
+  UnknownProviderError, BridgeError, ProviderHttpError,
   type ProviderModelsResponse,
 } from "../src/index.js";
 import { baselineResponse } from "./fixtures.js";
@@ -29,13 +29,13 @@ function transport(replies: { body: unknown; status?: number }[]) {
   return { calls, fetch };
 }
 
-describe("router model discovery", () => {
+describe("bridge model discovery", () => {
   it("dispatches custom providers and preserves metadata and timing", async () => {
     const list: ProviderModelsResponse = { models: [{ id: "my-model", raw: { capability: "custom" } }], raw: { native: true } };
     const listModels = vi.fn(async () => list);
     const complete = vi.fn(async () => ({ output: baselineResponse(), raw: {} }));
-    const router = createRouter({ providers: { custom: { complete, listModels } } });
-    const response = await router.listModels({ provider: "custom" });
+    const bridge = createBridge({ providers: { custom: { complete, listModels } } });
+    const response = await bridge.listModels({ provider: "custom" });
     expect(response).toMatchObject({ provider: "custom", ...list });
     expect(response.meta.durationMs).toBeGreaterThanOrEqual(0);
     expect(Number.isFinite(Date.parse(response.meta.startedAt))).toBe(true);
@@ -45,22 +45,22 @@ describe("router model discovery", () => {
   });
 
   it("rejects missing providers and reports unsupported custom discovery", async () => {
-    const router = createRouter({ providers: { completionOnly: { async complete() { return { output: baselineResponse(), raw: null }; } } } });
-    await expect(router.listModels({ provider: "unknown" as never })).rejects.toBeInstanceOf(UnknownProviderError);
-    await expect(router.listModels({ provider: "completionOnly" })).rejects.toMatchObject({
+    const bridge = createBridge({ providers: { completionOnly: { async complete() { return { output: baselineResponse(), raw: null }; } } } });
+    await expect(bridge.listModels({ provider: "unknown" as never })).rejects.toBeInstanceOf(UnknownProviderError);
+    await expect(bridge.listModels({ provider: "completionOnly" })).rejects.toMatchObject({
       name: "UnsupportedFeatureError", target: "completionOnly", feature: "model discovery",
     });
-    const response = await router.complete({ provider: "completionOnly", model: "model", input: { messages: [] } });
+    const response = await bridge.complete({ provider: "completionOnly", model: "model", input: { messages: [] } });
     expect(response.output.id).toBe("test-1");
   });
 
   it("propagates discovery failures", async () => {
     const error = new Error("unavailable");
-    const router = createRouter({ providers: { custom: {
+    const bridge = createBridge({ providers: { custom: {
       async complete() { return { output: baselineResponse(), raw: {} }; },
       async listModels() { throw error; },
     } } });
-    await expect(router.listModels({ provider: "custom" })).rejects.toBe(error);
+    await expect(bridge.listModels({ provider: "custom" })).rejects.toBe(error);
   });
 });
 
@@ -68,8 +68,8 @@ describe("built-in model discovery", () => {
   it("queries OpenAI with configured credentials and normalizes timestamps", async () => {
     const native = { object: "list", data: [openaiModel] };
     const http = transport([{ body: native }]);
-    const router = createRouter({ providers: createBuiltInProviders({ openai: { apiKey: "private-key", baseURL: "http://provider.test/v1", fetch: http.fetch } }) });
-    const response = await router.listModels({ provider: "openai" });
+    const bridge = createBridge({ providers: createBuiltInProviders({ openai: { apiKey: "private-key", baseURL: "http://provider.test/v1", fetch: http.fetch } }) });
+    const response = await bridge.listModels({ provider: "openai" });
     expect(http.calls[0]?.url).toBe("http://provider.test/v1/models");
     expect(http.calls[0]?.method).toBe("GET");
     expect(http.calls[0]?.headers.get("authorization")).toBe("Bearer private-key");
@@ -111,8 +111,8 @@ describe("built-in model discovery", () => {
   it.each(["ollama", "ollama-cloud"] as const)("queries native tags for %s", async (name) => {
     const native = { models: [ollamaModel] };
     const http = transport([{ body: native }]);
-    const router = createRouter({ providers: createBuiltInProviders({ [name]: { apiKey: "private-key", baseURL: "http://provider.test/api/", fetch: http.fetch, timeoutMs: 5000 } }) });
-    const response = await router.listModels({ provider: name });
+    const bridge = createBridge({ providers: createBuiltInProviders({ [name]: { apiKey: "private-key", baseURL: "http://provider.test/api/", fetch: http.fetch, timeoutMs: 5000 } }) });
+    const response = await bridge.listModels({ provider: name });
     expect(http.calls[0]?.url).toBe("http://provider.test/api/tags");
     expect(http.calls[0]?.method).toBe("GET");
     expect(http.calls[0]?.body).toBeNull();
@@ -153,14 +153,14 @@ describe("built-in model discovery", () => {
 
   it.each([null, {}, { models: "bad" }, { models: [{}] }, { models: [null] }])("rejects malformed Ollama catalog %#", async (body) => {
     const http = transport([{ body }]);
-    await expect(new OllamaProvider({ fetch: http.fetch }).listModels()).rejects.toBeInstanceOf(RouterError);
+    await expect(new OllamaProvider({ fetch: http.fetch }).listModels()).rejects.toBeInstanceOf(BridgeError);
   });
 
   it("requires cloud credentials and propagates HTTP failures", async () => {
     vi.stubEnv("OLLAMA_CLOUD_API_KEY", "");
     vi.stubEnv("OLLAMA_API_KEY", "");
     const http = transport([{ status: 401, body: { error: "denied" } }]);
-    await expect(new OllamaCloudProvider({ fetch: http.fetch }).listModels()).rejects.toBeInstanceOf(RouterError);
+    await expect(new OllamaCloudProvider({ fetch: http.fetch }).listModels()).rejects.toBeInstanceOf(BridgeError);
     expect(http.calls).toHaveLength(0);
     await expect(new OllamaCloudProvider({ apiKey: "key", fetch: http.fetch }).listModels()).rejects.toBeInstanceOf(ProviderHttpError);
     expect(http.calls).toHaveLength(1);
@@ -174,12 +174,12 @@ describe("built-in model discovery", () => {
 });
 
 async function checkTypes() {
-  const router = createRouter({ providers: { custom: {
+  const bridge = createBridge({ providers: { custom: {
     async complete() { return { output: baselineResponse(), raw: {} }; },
     async listModels() { return { models: [], raw: null }; },
   } } });
-  await router.listModels({ provider: "custom" });
+  await bridge.listModels({ provider: "custom" });
   // @ts-expect-error Discovery provider names are inferred from the injected registry.
-  await router.listModels({ provider: "unknown" });
+  await bridge.listModels({ provider: "unknown" });
 }
 void checkTypes;

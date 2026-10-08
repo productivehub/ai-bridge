@@ -1,6 +1,6 @@
-# @productivehub/router
+# @productivehub/ai-bridge
 
-An extensible AI router with its own provider-neutral `router` dialect. Providers only speak this baseline. Completions return a `RouterResponse`; use `res.toDialect(name)` when you need another response shape. Query provider model catalogs with `router.listModels({ provider })`.
+Call any AI model provider through one provider-neutral format. `ai-bridge` sits between your code and providers such as OpenAI, Anthropic, DeepSeek and Ollama: providers translate their native APIs into the `bridge` baseline, and dialects translate the baseline into whichever response shape you need. It does not choose models for you; you name the provider and model on each call. Completions return a `BridgeResponse`; use `res.toDialect(name)` when you need another response shape. Query provider model catalogs with `bridge.listModels({ provider })`.
 
 Created and maintained by [Segev Shmueli](https://github.com/segevsh) (`@segevsh`) as part of [productiveHub](https://github.com/productivehub).
 
@@ -19,20 +19,20 @@ pnpm test
 pnpm build
 ```
 
-When used in the `phub-director` monorepo, run `pnpm install` from that repository's root. A workspace consumer can add `"@productivehub/router": "workspace:*"` to its dependencies.
+When used in the `phub-director` monorepo, run `pnpm install` from that repository's root. A workspace consumer can add `"@productivehub/ai-bridge": "workspace:*"` to its dependencies.
 
 Configure the API key or local server URL for the providers you inject; see [connection settings](#connection-settings) below.
 
 ```ts
 import {
-  createRouter,
+  createBridge,
   createBuiltInProviders,
   openaiDialect,
   anthropicDialect,
   ollamaDialect,
-} from "@productivehub/router";
+} from "@productivehub/ai-bridge";
 
-const router = createRouter({
+const bridge = createBridge({
   providers: createBuiltInProviders({
     ollama: { baseURL: "http://localhost:11434" },
   }),
@@ -43,7 +43,7 @@ const router = createRouter({
   },
 });
 
-const res = await router.complete({
+const res = await bridge.complete({
   provider: "ollama",
   model: "llama3.2",
   input: {
@@ -52,60 +52,64 @@ const res = await router.complete({
   },
 });
 
-res.output;                       // RouterOutput: full canonical response
-res.usage;                        // RouterUsage: inclusive token counts and details
+res.output;                       // BridgeOutput: full canonical response
+res.usage;                        // BridgeUsage: inclusive token counts and details
 res.raw;                          // Untouched provider response
 res.meta;                         // startedAt / endedAt (UTC ISO 8601), durationMs
 const claude = res.toDialect("anthropic"); // Anthropic.Messages.Message
 const openai = res.toDialect("openai");   // OpenAI.Chat.Completions.ChatCompletion
 const native = res.toDialect("ollama");   // OllamaOutput
-res.toDialect("router");                 // Same object as res.output
+res.toDialect("bridge");                 // Same object as res.output
 ```
 
-Only injected providers and dialects are available. The `router` baseline dialect is intrinsic. Registries belong to each instance; there is no global registration state. Names and native input/output types are inferred from the objects passed at startup.
+Only injected providers and dialects are available. The `bridge` baseline dialect is intrinsic. Registries belong to each instance; there is no global registration state. Names and native input/output types are inferred from the objects passed at startup.
 
 Providers are lightweight until first use. `createBuiltInProviders(config, env)`
 registers hosted providers only with nonempty keys and local Ollama only with an
 explicit base URL from config or `OLLAMA_BASE_URL`. Empty settings disable that
-provider. The factory captures connections at startup; directly constructed
-adapters retain their documented environment fallbacks. OpenAI and Anthropic load
-their SDKs lazily. Ollama and Ollama Cloud share the native `/api/chat`
-implementation. Calls are non-streaming and do not retry automatically.
+provider. DeepSeek registers from `DEEPSEEK_API_KEY` (or `config.deepseek.apiKey`)
+and takes `DEEPSEEK_BASE_URL` as its base URL, defaulting to
+`https://api.deepseek.com`. The factory captures connections at startup; directly
+constructed adapters retain their documented environment fallbacks. OpenAI and
+Anthropic load their SDKs lazily. Ollama and Ollama Cloud share the native
+`/api/chat` implementation. Calls are non-streaming and do not retry automatically.
 
 ## Available models
 
 ```ts
-const catalog = await router.listModels({ provider: "ollama" });
+const catalog = await bridge.listModels({ provider: "ollama" });
 catalog.models.map((model) => model.id); // IDs accepted by that provider
 catalog.provider;                     // Registry name used for this query
 catalog.raw;                          // Native model-list data
 catalog.meta;                         // startedAt, endedAt, durationMs
 ```
 
-All four built-in providers support discovery using their configured credentials,
+All five built-in providers support discovery using their configured credentials,
 base URL and transport. OpenAI and Anthropic use their native models endpoints;
 Anthropic pages are fetched automatically. Ollama and Ollama Cloud use native
 `/api/tags`: local Ollama reports available installed models, while the cloud host
-reports its cloud catalog.
+reports its cloud catalog. DeepSeek GETs its OpenAI-compatible `/models` directly
+with its own key and base URL; its entries carry no creation time, so `createdAt`
+is omitted rather than synthesized.
 
-`RouterModelsResponse` contains `provider`, `models`, `raw`, and `meta`. Each
-`RouterModel` has an `id` and native `raw` metadata. Optional common fields include
+`BridgeModelsResponse` contains `provider`, `models`, `raw`, and `meta`. Each
+`BridgeModel` has an `id` and native `raw` metadata. Optional common fields include
 `name`, `createdAt`, `modifiedAt`, `ownedBy`, `maxInputTokens`, `maxOutputTokens`, and
 `sizeBytes`, populated only when the provider reports them. OpenAI creation times
 are converted from Unix seconds to ISO 8601; Ollama modification times are kept
 separate from creation times. Anthropic's list `raw` groups payloads under
 `pages`; SDK clients and request state are excluded from all model-list responses.
 
-Models may include optional `costs: RouterModelCosts` with any known rates:
+Models may include optional `costs: BridgeModelCosts` with any known rates:
 `inputPerMillionTokens`, `outputPerMillionTokens`, `cachedInputPerMillionTokens`,
-`cacheWritePerMillionTokens`, and `perRequest`. Each rate is a `RouterCost` object
+`cacheWritePerMillionTokens`, and `perRequest`. Each rate is a `BridgeCost` object
 containing `currency` (an ISO 4217 code such as `USD`) and `amount` (a non-negative
 integer in the currency's smallest denomination, e.g. cents for USD). Token rates
 apply per 1,000,000 tokens; `perRequest` is a separate fee per request. For example,
 this hypothetical rate is USD 2.50 per million input tokens:
 
 ```ts
-const costs: RouterModelCosts = {
+const costs: BridgeModelCosts = {
   inputPerMillionTokens: { currency: "USD", amount: 250 },
 };
 ```
@@ -125,12 +129,51 @@ and native list data. Completion-only providers keep working and throw
 `UnsupportedFeatureError` if discovery is requested. Provider names remain
 inferred from the startup registry; unknown providers throw `UnknownProviderError`.
 
+## Allowance
+
+```ts
+const allowance = await bridge.getAllowance({ provider: "ollama-cloud" });
+allowance.available; // The provider's own verdict, or null when it has no such flag
+allowance.primary;   // The window that gates calls, or null when there is none
+allowance.windows;   // Every window the provider reports
+allowance.usage;     // Consumed usage for the report period, when available
+allowance.raw;       // Native payloads, e.g. { balance, usage } for Ollama Cloud
+allowance.meta;      // startedAt, endedAt, durationMs
+```
+
+`bridge.getAllowance({ provider })` asks how much of a provider's quota is still
+spendable and how much was consumed, returning `BridgeAllowanceResponse`: `provider`,
+`meta`, and the provider's `available`, `primary` window, its `windows`, optional `usage`
+and `raw`. `available` is the provider's own verdict that calls will succeed — `true`,
+`false`, or `null` when it reports no such flag. Each `AllowanceWindow` has a stable `id`,
+a `kind` of `money` (a currency balance) or `plan` (a share of a subscription period), an
+optional human `label`, optional `limit`, `remaining` and `used` amounts as `BridgeCost`,
+a `remainingFraction` in 0..1 that is `null` when it cannot be computed, an optional
+`period`, and the window's native `raw`. `primary` names the window that actually gates
+calls, and is `null` when the provider reports no windows. `AllowanceUsage` reports the
+`from`/`until` period, request counts, cost, token totals, and optional time `buckets`.
+
+Ollama Cloud implements the query from its `/api/balance` and `/api/usage` endpoints,
+using the configured bearer key; the two GETs run concurrently with a 15 s default
+timeout, negative balances read as 0, and a failing `/api/usage` only drops `usage`.
+DeepSeek implements it from `/user/balance`, read directly with its own key and base URL:
+one window per reported currency, `remaining` from `total_balance`, no `limit` and no
+`usage`. The remaining built-ins — OpenAI, Anthropic and local Ollama — do not implement
+it, so the bridge throws `UnsupportedFeatureError` with `feature === "allowance"`, and an
+unknown provider name throws `UnknownProviderError`. Custom adapters opt in by
+implementing `getAllowance(): Promise<ProviderAllowanceResponse>`.
+
+Reported amounts are provider decimals — USD for Ollama Cloud, the reported currency's
+own units for DeepSeek — not minor units. `toMinorUnits(value, fractionDigits = 2)`
+converts them to integer amounts for a `BridgeCost`; it works on the decimal string and
+rounds half-up, so `toMinorUnits("1.005")` is `101`.
+
 ## Native input, canonical response
 
 If a dialect includes `toBaseline`, it also accepts native input. Output remains canonical regardless of input dialect:
 
 ```ts
-const res = await router.complete({
+const res = await bridge.complete({
   provider: "ollama",
   model: "llama3.2",
   dialect: "anthropic",
@@ -170,28 +213,28 @@ No central provider or dialect union needs editing. A provider implements one me
 
 ```ts
 import type {
-  ProviderAdapter, ProviderRequest, ProviderResponse, RouterOutput,
-} from "@productivehub/router";
+  ProviderAdapter, ProviderRequest, ProviderResponse, BridgeOutput,
+} from "@productivehub/ai-bridge";
 
 class MyProvider implements ProviderAdapter {
   async complete(req: ProviderRequest): Promise<ProviderResponse> {
-    // Call your API, map its reply into RouterOutput, and return { output, raw }.
+    // Call your API, map its reply into BridgeOutput, and return { output, raw }.
     return callMyAPI(req);
   }
 }
 
-const customRouter = createRouter({
+const customBridge = createBridge({
   providers: { "my-server": new MyProvider() },
   dialects: {
     summary: {
-      fromBaseline(output: RouterOutput) {
+      fromBaseline(output: BridgeOutput) {
         return { id: output.id, choices: output.choices, tokens: output.usage.totalTokens };
       },
     },
   },
 });
 
-const res = await customRouter.complete({
+const res = await customBridge.complete({
   provider: "my-server",
   model: "my-model",
   input: { messages: [{ role: "user", content: "Hello." }] },
@@ -204,9 +247,9 @@ const summary = res.toDialect("summary"); // Inferred return type, no cast
 You may inject just the built-ins you use, or give an adapter your own registry name:
 
 ```ts
-import { OpenAIProvider } from "@productivehub/router/providers";
+import { OpenAIProvider } from "@productivehub/ai-bridge/providers";
 
-const privateRouter = createRouter({
+const privateBridge = createBridge({
   providers: {
     "private-api": new OpenAIProvider({
       baseURL: "https://my-compatible-server.example/v1",
@@ -224,17 +267,18 @@ Built-in providers accept `apiKey`, `baseURL`, `fetch`, and `timeoutMs`. Explici
 |---|---|---|
 | OpenAI | `OPENAI_API_KEY` | SDK `OPENAI_BASE_URL`, then OpenAI's default |
 | Anthropic | `ANTHROPIC_API_KEY` | SDK `ANTHROPIC_BASE_URL`, then Anthropic's default |
+| DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL`, then `https://api.deepseek.com` |
 | Ollama | Optional `OLLAMA_API_KEY` | `OLLAMA_BASE_URL`, then `http://localhost:11434` |
 | Ollama Cloud | `OLLAMA_CLOUD_API_KEY`, then `OLLAMA_API_KEY` | `OLLAMA_CLOUD_BASE_URL`, then `https://ollama.com` |
 
-For Ollama, use the server root or `/api` as `baseURL`. Cloud requires a key; local Ollama does not. No hosted-provider credential is reused for local Ollama.
+For Ollama, use the server root or `/api` as `baseURL`. Cloud requires a key; local Ollama does not. No hosted-provider credential is reused for local Ollama. DeepSeek never reads `OPENAI_API_KEY` or `OPENAI_BASE_URL`: it resolves the DeepSeek pair once at construction and uses it for completion, discovery and allowance, and it strips the OpenAI SDK's organization/project headers.
 
 ## Develop
 
 ```sh
-pnpm -F @productivehub/router typecheck
-pnpm -F @productivehub/router test
-pnpm -F @productivehub/router build
+pnpm -F @productivehub/ai-bridge typecheck
+pnpm -F @productivehub/ai-bridge test
+pnpm -F @productivehub/ai-bridge build
 ```
 
 Tests use injected transports and make no external API calls. See [architecture notes](./docs/ARCHITECTURE.md) for the design.

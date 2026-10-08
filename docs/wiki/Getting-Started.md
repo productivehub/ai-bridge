@@ -5,15 +5,15 @@
 Use Node.js 22 or later and the pnpm version declared in `package.json`.
 
 ```sh
-git clone https://github.com/productivehub/router.git
-cd router
+git clone https://github.com/productivehub/ai-bridge.git
+cd ai-bridge
 pnpm install
 pnpm typecheck
 pnpm test
 pnpm build
 ```
 
-Inside phub-director, run installation from the monorepo root. A workspace consumer can declare `"@productivehub/router": "workspace:*"` as a dependency. The examples below assume the package is available to your application.
+Inside phub-director, run installation from the monorepo root. A workspace consumer can declare `"@productivehub/ai-bridge": "workspace:*"` as a dependency. The examples below assume the package is available to your application.
 
 ## Make a completion
 
@@ -21,13 +21,13 @@ This example uses a local Ollama server. Start that server and install the model
 
 ```ts
 import {
-  createRouter,
+  createBridge,
   createBuiltInProviders,
   anthropicDialect,
   openaiDialect,
-} from "@productivehub/router";
+} from "@productivehub/ai-bridge";
 
-const router = createRouter({
+const bridge = createBridge({
   providers: createBuiltInProviders({
     ollama: { baseURL: "http://localhost:11434" },
   }, {}),
@@ -37,11 +37,11 @@ const router = createRouter({
   },
 });
 
-const response = await router.complete({
+const response = await bridge.complete({
   provider: "ollama",
   model: "llama3.2",
   input: {
-    messages: [{ role: "user", content: "Explain what an AI router does." }],
+    messages: [{ role: "user", content: "Explain what an AI bridge does." }],
     maxOutputTokens: 256,
   },
 });
@@ -55,6 +55,6 @@ const openaiResponse = response.toDialect("openai");
 
 The second factory argument is the environment to read. Passing `{}` makes this example use only the explicitly configured connection. Omit it to use the process environment as well.
 
-`provider` selects the registered adapter, and `model` is the identifier accepted by that provider. The router does not translate model names into another provider's model names.
+`provider` selects the registered adapter, and `model` is the identifier accepted by that provider. The bridge does not translate model names into another provider's model names.
 
 Use [Model Discovery](./Model-Discovery.md) to find available identifiers, [Configuration](./Configuration.md) to configure hosted providers, and [Dialects](./Dialects.md) to understand conversion limits.

@@ -1,8 +1,8 @@
 import type OpenAI from "openai";
 import type { OpenAIInput } from "./types.js";
 import type {
-  ContentBlock, NativeFields, RouterChoice, RouterInput, RouterMessage,
-  RouterOutput, RouterTool, RouterUsage,
+  ContentBlock, NativeFields, BridgeChoice, BridgeInput, BridgeMessage,
+  BridgeOutput, BridgeTool, BridgeUsage,
 } from "../baseline.js";
 import { blocks, extras, nativeFields, parseArguments, requestFields, requireAbsent, unsupported } from "./shared.js";
 
@@ -30,7 +30,7 @@ function fromPart(part: Part | OpenAI.Chat.Completions.ChatCompletionContentPart
   }
 }
 
-function fromMessage(message: Message): RouterMessage {
+function fromMessage(message: Message): BridgeMessage {
   if (message.role === "function") return {
     role: "user", content: [{ type: "native", dialect: "openai", value: { ...message } }],
   };
@@ -63,23 +63,23 @@ function fromMessage(message: Message): RouterMessage {
 
 const inputKeys = ["messages", "max_tokens", "max_completion_tokens", "temperature", "top_p", "stop", "tools", "tool_choice", "parallel_tool_calls", "reasoning_effort", "response_format", "seed", "n", "prompt_cache_key", "prompt_cache_retention"];
 
-export function openAIInputToBaseline(input: OpenAIInput): RouterInput {
-  const tools: RouterTool[] | undefined = input.tools?.map((tool) => tool.type === "function" ? {
+export function openAIInputToBaseline(input: OpenAIInput): BridgeInput {
+  const tools: BridgeTool[] | undefined = input.tools?.map((tool) => tool.type === "function" ? {
     type: "function", name: tool.function.name, inputSchema: tool.function.parameters ?? { type: "object" },
     ...(tool.function.description !== undefined ? { description: tool.function.description } : {}),
     ...(tool.function.strict != null ? { strict: tool.function.strict } : {}),
     extensions: nativeFields("openai", extras(tool.function, ["name", "parameters", "description", "strict"])),
   } : { type: "native", dialect: "openai", value: { ...tool } });
-  let toolChoice: RouterInput["toolChoice"];
+  let toolChoice: BridgeInput["toolChoice"];
   const extra = extras(input, inputKeys);
   if (input.max_tokens != null) extra.max_tokens = input.max_tokens;
   if (typeof input.tool_choice === "string") toolChoice = input.tool_choice;
   else if (input.tool_choice?.type === "function") toolChoice = { name: input.tool_choice.function.name };
   else if (input.tool_choice) extra.tool_choice = input.tool_choice;
-  let responseFormat: RouterInput["responseFormat"];
+  let responseFormat: BridgeInput["responseFormat"];
   if (input.response_format?.type === "json_schema") {
     const format = input.response_format.json_schema;
-    if (!format.schema) return unsupported("router", "JSON schema response format without a schema");
+    if (!format.schema) return unsupported("bridge", "JSON schema response format without a schema");
     responseFormat = { type: "json-schema", name: format.name, schema: format.schema,
       ...(format.strict != null ? { strict: format.strict } : {}) };
     if (format.description) extra.response_format = input.response_format;
@@ -130,7 +130,7 @@ function toPart(block: ContentBlock): Part {
   }
 }
 
-function toMessages(message: RouterMessage): Message[] {
+function toMessages(message: BridgeMessage): Message[] {
   const content = blocks(message);
   const extra = requestFields(message.extensions, "openai");
   const name = message.name ? { name: message.name } : {};
@@ -181,7 +181,7 @@ function toMessages(message: RouterMessage): Message[] {
   return messages;
 }
 
-export function baselineToOpenAIInput(input: RouterInput): OpenAIInput {
+export function baselineToOpenAIInput(input: BridgeInput): OpenAIInput {
   requireAbsent("openai", input, ["topK", "cacheControl", "keepAlive", "runtimeOptions"]);
   if (input.reasoning) requireAbsent("openai", input.reasoning, ["mode", "budgetTokens", "display"]);
   if (input.cacheRetention && !["in_memory", "24h"].includes(input.cacheRetention)) unsupported("openai", `cache retention ${input.cacheRetention}`);
@@ -217,7 +217,7 @@ export function baselineToOpenAIInput(input: RouterInput): OpenAIInput {
   };
 }
 
-export function openAIUsageToBaseline(usage: Usage | undefined): RouterUsage {
+export function openAIUsageToBaseline(usage: Usage | undefined): BridgeUsage {
   const p = usage?.prompt_tokens_details;
   const c = usage?.completion_tokens_details;
   return {
@@ -232,7 +232,7 @@ export function openAIUsageToBaseline(usage: Usage | undefined): RouterUsage {
   };
 }
 
-export function baselineToOpenAIUsage(usage: RouterUsage): Usage {
+export function baselineToOpenAIUsage(usage: BridgeUsage): Usage {
   // SDK types require numbers; do not invent zero usage when the provider omits it.
   if (usage.inputTokens === null || usage.outputTokens === null || usage.totalTokens === null) return unsupported("openai", "unreported token usage (available as null in baseline)");
   return {
@@ -248,10 +248,10 @@ export function baselineToOpenAIUsage(usage: RouterUsage): Usage {
   };
 }
 
-export function openAIOutputToBaseline(output: Chat): RouterOutput {
+export function openAIOutputToBaseline(output: Chat): BridgeOutput {
   return {
     id: output.id, model: output.model, createdAt: new Date(output.created * 1000).toISOString(),
-    choices: output.choices.map((choice): RouterChoice => ({
+    choices: output.choices.map((choice): BridgeChoice => ({
       index: choice.index,
       message: { ...fromMessage({ ...choice.message, role: "assistant" }), role: "assistant" },
       finishReason: ({ stop: "stop", length: "length", tool_calls: "tool-calls", function_call: "tool-calls", content_filter: "content-filter" } as const)[choice.finish_reason],
@@ -263,7 +263,7 @@ export function openAIOutputToBaseline(output: Chat): RouterOutput {
   };
 }
 
-export function baselineToOpenAIOutput(output: RouterOutput): Chat {
+export function baselineToOpenAIOutput(output: BridgeOutput): Chat {
   return {
     ...output.extensions?.openai, id: output.id, model: output.model, object: "chat.completion",
     created: output.createdAt ? Math.floor(Date.parse(output.createdAt) / 1000) : Math.floor(Date.now() / 1000),

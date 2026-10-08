@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { UnsupportedFeatureError } from "../src/index.js";
-import type { RouterInput } from "../src/index.js";
+import type { BridgeInput } from "../src/index.js";
 import { anthropicInputToBaseline, baselineToAnthropicInput, anthropicOutputToBaseline, baselineToAnthropicOutput } from "../src/dialects/anthropic.js";
 import { openAIInputToBaseline, baselineToOpenAIInput, openAIOutputToBaseline, baselineToOpenAIOutput } from "../src/dialects/openai.js";
 import { baselineToOllamaInput, ollamaOutputToBaseline } from "../src/dialects/ollama.js";
 import { anthropicResponse, openaiResponse, ollamaResponse } from "./fixtures.js";
 
-const tools: NonNullable<RouterInput["tools"]> = [{ type: "function", name: "lookup", description: "look up a city", inputSchema: { type: "object", properties: { city: { type: "string" } } } }];
+const tools: NonNullable<BridgeInput["tools"]> = [{ type: "function", name: "lookup", description: "look up a city", inputSchema: { type: "object", properties: { city: { type: "string" } } } }];
 
-const history: RouterInput = {
+const history: BridgeInput = {
   messages: [
     { role: "system", content: "Be brief." },
     { role: "user", content: [{ type: "text", text: "Look this up." }, { type: "image", source: { type: "base64", mediaType: "image/png", data: "aW1hZ2U=" } }] },
@@ -103,7 +103,7 @@ describe("dialect conversion", () => {
   });
 
   it("maps structured output and tool selection in both native APIs", () => {
-    const canonical: RouterInput = { messages: [], tools, toolChoice: { name: "lookup" }, parallelToolCalls: false,
+    const canonical: BridgeInput = { messages: [], tools, toolChoice: { name: "lookup" }, parallelToolCalls: false,
       responseFormat: { type: "json-schema", name: "city", schema: { type: "object" }, strict: true }, reasoning: { effort: "high" } };
     expect(baselineToOpenAIInput(canonical)).toMatchObject({
       tool_choice: { type: "function", function: { name: "lookup" } }, parallel_tool_calls: false, reasoning_effort: "high",
@@ -116,7 +116,7 @@ describe("dialect conversion", () => {
   });
 
   it("maps audio into OpenAI and rejects it for APIs without audio inputs", () => {
-    const canonical: RouterInput = { messages: [{ role: "user", content: [{ type: "audio", data: "YXVkaW8=", format: "wav" }] }] };
+    const canonical: BridgeInput = { messages: [{ role: "user", content: [{ type: "audio", data: "YXVkaW8=", format: "wav" }] }] };
     const native = baselineToOpenAIInput(canonical);
     expect(native.messages[0]).toMatchObject({ content: [{ type: "input_audio", input_audio: { data: "YXVkaW8=", format: "wav" } }] });
     expect(openAIInputToBaseline(native).messages[0]!.content).toContainEqual(expect.objectContaining({ type: "audio", data: "YXVkaW8=", format: "wav" }));
@@ -125,20 +125,20 @@ describe("dialect conversion", () => {
   });
 
   it("maps base64 PDF documents into OpenAI and Anthropic", () => {
-    const canonical: RouterInput = { messages: [{ role: "user", content: [{ type: "document", name: "report.pdf", source: { type: "base64", mediaType: "application/pdf", data: "cGRm" } }] }] };
+    const canonical: BridgeInput = { messages: [{ role: "user", content: [{ type: "document", name: "report.pdf", source: { type: "base64", mediaType: "application/pdf", data: "cGRm" } }] }] };
     expect(baselineToOpenAIInput(canonical).messages[0]).toMatchObject({ content: [{ type: "file", file: { file_data: "data:application/pdf;base64,cGRm", filename: "report.pdf" } }] });
     expect(baselineToAnthropicInput(canonical).messages[0]).toMatchObject({ content: [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: "cGRm" } }] });
   });
 
   it("accepts original image detail from newer OpenAI SDKs", () => {
-    const input: RouterInput = { messages: [{ role: "user", content: [{ type: "image", source: { type: "url", url: "https://example.com/image.png" }, detail: "original" }] }] };
+    const input: BridgeInput = { messages: [{ role: "user", content: [{ type: "image", source: { type: "url", url: "https://example.com/image.png" }, detail: "original" }] }] };
     const native = baselineToOpenAIInput(input);
     expect(native.messages[0]).toMatchObject({ content: [{ type: "image_url", image_url: { detail: "original" } }] });
     expect(openAIInputToBaseline(native).messages[0]!.content).toContainEqual(expect.objectContaining({ detail: "original" }));
   });
 
   it("does not relabel text documents as PDFs", () => {
-    const canonical: RouterInput = { messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", mediaType: "text/plain", data: "aGVsbG8=" } }] }] };
+    const canonical: BridgeInput = { messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", mediaType: "text/plain", data: "aGVsbG8=" } }] }] };
     expect(baselineToAnthropicInput(canonical).messages[0]).toMatchObject({ content: [{ type: "document", source: { type: "text", media_type: "text/plain", data: "hello" } }] });
     expect(() => baselineToOpenAIInput(canonical)).toThrow(UnsupportedFeatureError);
   });
