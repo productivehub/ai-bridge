@@ -4,6 +4,7 @@ import type { BridgeInput } from "./baseline.js";
 import type {
   DialectInput, DialectOutput, DialectRegistry, DialectService, ProviderRegistry,
   BridgeRequest, BridgeConfig, BridgeResponse, ListModelsRequest, BridgeModelsResponse,
+  AllowanceRequest, BridgeAllowanceResponse, BridgeResponseMeta,
 } from "./types.js";
 
 type WithBaseline<D extends DialectRegistry> = D & { bridge: typeof bridgeDialect };
@@ -11,6 +12,7 @@ type WithBaseline<D extends DialectRegistry> = D & { bridge: typeof bridgeDialec
 export interface Bridge<P extends ProviderRegistry = ProviderRegistry, D extends DialectRegistry = DialectRegistry> {
   complete(req: BridgeRequest<keyof P & string, WithBaseline<D>>): Promise<BridgeResponse<WithBaseline<D>>>;
   listModels(req: ListModelsRequest<keyof P & string>): Promise<BridgeModelsResponse>;
+  getAllowance(req: AllowanceRequest<keyof P & string>): Promise<BridgeAllowanceResponse>;
   providers(): (keyof P & string)[];
   dialects(): (keyof WithBaseline<D> & string)[];
 }
@@ -29,22 +31,35 @@ export function createBridge<const P extends ProviderRegistry, const D extends D
     return value as DialectService<unknown, unknown>;
   }
 
+  /** Shared timing: returns a function that stamps the response meta when called. */
+  function startTimer(): () => BridgeResponseMeta {
+    const startedAt = new Date().toISOString();
+    const start = performance.now();
+    return () => ({ startedAt, endedAt: new Date().toISOString(), durationMs: performance.now() - start });
+  }
+
   return {
+    async getAllowance(req) {
+      const meta = startTimer();
+      const provider = providers.get(req.provider);
+      if (!provider) throw new UnknownProviderError(req.provider);
+      if (!provider.getAllowance) throw new UnsupportedFeatureError(req.provider, "allowance");
+      const result = await provider.getAllowance();
+      return { ...result, provider: req.provider, meta: meta() };
+    },
     async listModels(req) {
-      const startedAt = new Date().toISOString();
-      const start = performance.now();
+      const meta = startTimer();
       const provider = providers.get(req.provider);
       if (!provider) throw new UnknownProviderError(req.provider);
       if (!provider.listModels) throw new UnsupportedFeatureError(req.provider, "model discovery");
       const result = await provider.listModels();
       return {
         provider: req.provider, models: result.models, raw: result.raw,
-        meta: { startedAt, endedAt: new Date().toISOString(), durationMs: performance.now() - start },
+        meta: meta(),
       };
     },
     async complete(req) {
-      const startedAt = new Date().toISOString();
-      const start = performance.now();
+      const meta = startTimer();
       const provider = providers.get(req.provider);
       if (!provider) throw new UnknownProviderError(req.provider);
       let input: BridgeInput;
@@ -58,7 +73,7 @@ export function createBridge<const P extends ProviderRegistry, const D extends D
       const response: BridgeResponse<WithBaseline<D>> = {
         provider: req.provider, model: req.model, dialect: "bridge",
         output: result.output, usage: result.output.usage, raw: result.raw,
-        meta: { startedAt, endedAt: new Date().toISOString(), durationMs: performance.now() - start },
+        meta: meta(),
         toDialect<K extends keyof WithBaseline<D> & string>(name: K): DialectOutput<WithBaseline<D>[K]> {
           return service(name).fromBaseline(response.output) as DialectOutput<WithBaseline<D>[K]>;
         },

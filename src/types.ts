@@ -73,6 +73,8 @@ export interface ProviderAdapter {
   complete(req: ProviderRequest): Promise<ProviderResponse>;
   /** Optional so completion-only custom adapters remain compatible. */
   listModels?(): Promise<ProviderModelsResponse>;
+  /** Optional: remaining spend allowance, for providers that expose one. */
+  getAllowance?(): Promise<ProviderAllowanceResponse>;
 }
 
 /** A response-only dialect needs only fromBaseline; input conversion is optional. */
@@ -114,4 +116,57 @@ export interface ProviderConfig {
 export interface BridgeConfig<P extends ProviderRegistry = ProviderRegistry, D extends DialectRegistry = DialectRegistry> {
   providers: P;
   dialects?: D;
+}
+
+export interface AllowanceRequest<P extends string = string> {
+  provider: P;
+}
+
+/** One quota bucket, flattened so every provider renders the same way. */
+export interface AllowanceWindow {
+  /** Stable per-provider id: "balance" | "included" | "purchased" | "session" | "daily" | "weekly" | "monthly" | provider-specific. */
+  id: string;
+  /** money = a balance in currency; plan = a share of a subscription window. */
+  kind: "money" | "plan";
+  /** Human label, e.g. "Included credit", "Weekly (all models)". */
+  label?: string;
+  /** The window's ceiling: allowance_usd, plan quota. Absent when the provider only reports a balance (DeepSeek). */
+  limit?: BridgeCost;
+  /** What is still spendable. Absent for plan windows that report only a percentage. */
+  remaining?: BridgeCost;
+  /** What has been consumed in this window, when reported. */
+  used?: BridgeCost;
+  /** 0..1 share still available. remaining/limit, or 1 - utilisation for plan windows; null when it cannot be computed (no limit). */
+  remainingFraction: number | null;
+  /** The window's current period. resetsAt is the next reset; from/until when the provider reports both. */
+  period?: { from?: string; until?: string; resetsAt?: string };
+  /** Native window payload. */
+  raw?: unknown;
+}
+
+/** Consumed usage over a report window, when the provider has a usage endpoint. */
+export interface AllowanceUsage {
+  from: string;
+  until: string;
+  requests?: number;
+  cost?: BridgeCost;
+  tokens?: Pick<BridgeUsage, "inputTokens" | "outputTokens" | "cachedInputTokens">;
+  /** Optional time buckets in the same shape, for charts; partial marks an in-progress bucket. */
+  buckets?: Array<Omit<AllowanceUsage, "buckets"> & { partial?: boolean }>;
+}
+
+export interface ProviderAllowanceResponse {
+  /** Provider's own verdict that calls will succeed (DeepSeek is_available); null when it has no such flag. */
+  available: boolean | null;
+  /** The window to show first: the included/plan balance that actually gates calls. */
+  primary: AllowanceWindow | null;
+  windows: AllowanceWindow[];
+  usage?: AllowanceUsage;
+  /** Native payload(s) of every endpoint read. */
+  raw: unknown;
+}
+
+export interface BridgeAllowanceResponse extends ProviderAllowanceResponse {
+  provider: string;
+  meta: BridgeResponseMeta;
 }
