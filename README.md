@@ -125,6 +125,37 @@ and native list data. Completion-only providers keep working and throw
 `UnsupportedFeatureError` if discovery is requested. Provider names remain
 inferred from the startup registry; unknown providers throw `UnknownProviderError`.
 
+## Allowance
+
+```ts
+const allowance = await bridge.getAllowance({ provider: "ollama-cloud" });
+allowance.primary;   // The window that gates calls
+allowance.windows;   // Every window the provider reports
+allowance.usage;     // Consumed usage for the report period, when available
+allowance.raw;       // Native payloads, e.g. { balance, usage } for Ollama Cloud
+allowance.meta;      // startedAt, endedAt, durationMs
+```
+
+`bridge.getAllowance({ provider })` asks how much of a provider's quota is still
+spendable and how much was consumed, returning `BridgeAllowanceResponse`: `provider`,
+`meta`, and the provider's `primary` window, its `windows`, optional `usage` and `raw`.
+Each `AllowanceWindow` has a stable `id`, a `kind` of `money` (a currency balance) or
+`plan` (a share of a subscription period), optional `limit`, `remaining` and `used`
+amounts as `BridgeCost`, a `remainingFraction` in 0..1 that is `null` when it cannot be
+computed, an optional `period`, and the window's native `raw`. `primary` names the window
+that actually gates calls. `AllowanceUsage` reports the `from`/`until` period, request
+counts, cost, token totals, and optional time `buckets`.
+
+Ollama Cloud implements the query from its `/api/balance` and `/api/usage` endpoints,
+using the configured bearer key. Every other built-in provider throws
+`UnsupportedFeatureError` with `feature === "allowance"`, and an unknown provider throws
+`UnknownProviderError`. Custom adapters opt in by implementing
+`getAllowance(): Promise<ProviderAllowanceResponse>`.
+
+Reported amounts are USD decimals, not minor units. `toMinorUnits(value,
+fractionDigits = 2)` converts them to integer amounts for a `BridgeCost`; it works on the
+decimal string and rounds half-up, so `toMinorUnits("1.005")` is `101`.
+
 ## Native input, canonical response
 
 If a dialect includes `toBaseline`, it also accepts native input. Output remains canonical regardless of input dialect:
