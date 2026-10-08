@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createBridge, UnknownProviderError, UnsupportedFeatureError,
+  createBridge, BridgeError, toMinorUnits, UnknownProviderError, UnsupportedFeatureError,
   type AllowanceWindow, type ProviderAdapter, type ProviderAllowanceResponse,
 } from "../src/index.js";
 import { baselineResponse } from "./fixtures.js";
@@ -42,5 +42,33 @@ describe("Bridge.getAllowance (A2)", () => {
   it("rejects an unknown provider", async () => {
     // @ts-expect-error not a registered provider
     await expect(bridge.getAllowance({ provider: "nope" })).rejects.toBeInstanceOf(UnknownProviderError);
+  });
+});
+
+describe("toMinorUnits (A3)", () => {
+  it("converts amounts to minor units", () => {
+    expect(toMinorUnits("110.00")).toBe(11000);
+    expect(toMinorUnits("1.005")).toBe(101);
+    expect(toMinorUnits(6.28068)).toBe(628);
+    expect(toMinorUnits(50.34109)).toBe(5034);
+    expect(toMinorUnits(0.125)).toBe(13);
+    expect(toMinorUnits(60)).toBe(6000);
+    expect(toMinorUnits("1e-7")).toBe(0);
+  });
+  it("rounds half-up instead of in binary floating point", () => {
+    expect(toMinorUnits("1.045")).toBe(105);
+    expect(toMinorUnits(1.045)).toBe(105);
+    expect(Math.round(1.005 * 100)).toBe(100);
+  });
+  it("honours fractionDigits and exponent forms", () => {
+    expect(toMinorUnits("1.005", 3)).toBe(1005);
+    expect(toMinorUnits("2.5e+3")).toBe(250000);
+    expect(toMinorUnits("0")).toBe(0);
+  });
+  it.each(["abc", "", "  ", "NaN", "Infinity", "-1", "-0.01"])("rejects the string %o", (value) => {
+    expect(() => toMinorUnits(value)).toThrow(BridgeError);
+  });
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])("rejects the number %o", (value) => {
+    expect(() => toMinorUnits(value)).toThrow(BridgeError);
   });
 });
