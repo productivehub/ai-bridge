@@ -2,14 +2,16 @@
 import { OpenAIProvider } from "./openai.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OllamaProvider, OllamaCloudProvider } from "./ollama.js";
+import { DeepSeekProvider } from "./deepseek.js";
 import type { ProviderConfig } from "../types.js";
 
-export { OpenAIProvider, AnthropicProvider, OllamaProvider, OllamaCloudProvider };
+export { OpenAIProvider, AnthropicProvider, DeepSeekProvider, OllamaProvider, OllamaCloudProvider };
 export { ProviderHttpError } from "./ollama.js";
 
 export interface BuiltInProviderConfig {
   openai?: ProviderConfig;
   anthropic?: ProviderConfig;
+  deepseek?: ProviderConfig;
   ollama?: ProviderConfig;
   "ollama-cloud"?: ProviderConfig;
 }
@@ -17,6 +19,7 @@ export interface BuiltInProviderConfig {
 export type BuiltInProviders = {
   openai?: OpenAIProvider;
   anthropic?: AnthropicProvider;
+  deepseek?: DeepSeekProvider;
   ollama?: OllamaProvider;
   "ollama-cloud"?: OllamaCloudProvider;
 };
@@ -42,6 +45,11 @@ export function resolveBuiltInProviderConfig(
     ...config.anthropic, apiKey: anthropicKey,
     baseURL: configured(config.anthropic?.baseURL, env.ANTHROPIC_BASE_URL) ?? "https://api.anthropic.com",
   };
+  const deepseekKey = configured(config.deepseek?.apiKey, env.DEEPSEEK_API_KEY);
+  if (deepseekKey) providers.deepseek = {
+    ...config.deepseek, apiKey: deepseekKey,
+    baseURL: configured(config.deepseek?.baseURL, env.DEEPSEEK_BASE_URL) ?? "https://api.deepseek.com",
+  };
   const ollamaURL = configured(config.ollama?.baseURL, env.OLLAMA_BASE_URL);
   if (ollamaURL) providers.ollama = {
     ...config.ollama, baseURL: ollamaURL,
@@ -64,6 +72,7 @@ export function createBuiltInProviders(
   return {
     ...(settings.openai ? { openai: new OpenAIProvider(settings.openai) } : {}),
     ...(settings.anthropic ? { anthropic: new AnthropicProvider(settings.anthropic) } : {}),
+    ...(settings.deepseek ? { deepseek: new DeepSeekProvider(settings.deepseek) } : {}),
     ...(settings.ollama ? { ollama: new OllamaProvider(settings.ollama) } : {}),
     ...(settings["ollama-cloud"] ? { "ollama-cloud": new OllamaCloudProvider(settings["ollama-cloud"]) } : {}),
   };

@@ -9,8 +9,8 @@ import type { OllamaOutput } from "../dialects/ollama.js";
 
 export class ProviderHttpError extends BridgeError {
   override readonly name = "ProviderHttpError";
-  constructor(readonly status: number, readonly body: string) {
-    super(`Ollama returned HTTP ${status}`);
+  constructor(readonly status: number, readonly body: string, provider = "Ollama") {
+    super(`${provider} returned HTTP ${status}`);
   }
 }
 
