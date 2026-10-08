@@ -9,6 +9,7 @@ The root module `@productivehub/ai-bridge` exports the bridge factory, contracts
 | `createBridge({ providers, dialects? })` | A bridge with instance-local registries; provider and dialect names are inferred |
 | `bridge.complete({ provider, model, input, dialect? })` | `Promise<BridgeResponse>` using canonical output |
 | `bridge.listModels({ provider })` | `Promise<BridgeModelsResponse>` using canonical model metadata |
+| `bridge.getAllowance({ provider })` | `Promise<BridgeAllowanceResponse>` for providers that implement the optional allowance method |
 | `bridge.providers()` | Registered provider/account names |
 | `bridge.dialects()` | Registered dialect names, including intrinsic `bridge` |
 | `createBuiltInProviders(config?, env?)` | Adapters for enabled built-in connections |
@@ -37,19 +38,23 @@ See [Configuration](./Configuration.md) for startup settings. Provider names and
 
 `BridgeResponseMeta` contains UTC ISO 8601 `startedAt` and `endedAt`, plus monotonic elapsed `durationMs`. This measures the bridge call. Provider inference timings are separate and may appear under `usage.timings`; native Ollama durations are converted to milliseconds.
 
-Model discovery uses the same timing envelope. Model creation/modification timestamps describe the model and are independent of request timing.
+Model discovery uses the same timing envelope. Model creation/modification timestamps describe the model and are independent of request timing. Allowance reads use the same timing envelope, and their native payloads stay in `raw` without the key.
 
 ## Extension contracts
 
 | Contract | Required methods / fields |
 | --- | --- |
-| `ProviderAdapter` | `complete(ProviderRequest): Promise<ProviderResponse>`; optional `listModels(): Promise<ProviderModelsResponse>` |
+| `ProviderAdapter` | `complete(ProviderRequest): Promise<ProviderResponse>`; optional `listModels(): Promise<ProviderModelsResponse>` and `getAllowance(): Promise<ProviderAllowanceResponse>` |
 | `ProviderRequest` | `model`, canonical `input` |
 | `ProviderResponse` | Canonical `output`, native `raw` |
 | `DialectService<Input, Output>` | `fromBaseline(BridgeOutput): Output`; optional `toBaseline(Input): BridgeInput` |
 | `ProviderModelsResponse` | `models: BridgeModel[]`, native list `raw` |
 | `BridgeModelsResponse` | Provider model response plus `provider` and `meta` |
 | `BridgeCost` | `currency`, `amount` in minor units |
+| `ProviderAllowanceResponse` | `available` (`true`/`false`/`null`), `primary` window or `null`, `windows`, optional `usage`, native `raw` |
+| `BridgeAllowanceResponse` | Provider allowance response plus `provider` and `meta` |
+| `AllowanceWindow` | `id`, `kind` (`money` or `plan`), optional `label`, optional `limit`/`remaining`/`used` `BridgeCost`s, `remainingFraction` or `null`, optional `period`, native `raw` |
+| `AllowanceUsage` | `from`/`until`, optional `requests`, `cost`, `tokens` and time `buckets` |
 
 The complete [public types](https://github.com/productivehub/ai-bridge/blob/main/src/types.ts) and [baseline types](https://github.com/productivehub/ai-bridge/blob/main/src/baseline.ts) are the source of truth. See [Providers](./Providers.md), [Dialects](./Dialects.md), [Model Discovery](./Model-Discovery.md), and [Costs](./Costs.md) for examples.
 
@@ -60,8 +65,8 @@ The complete [public types](https://github.com/productivehub/ai-bridge/blob/main
 | `BridgeError` | Bridge configuration or provider response problems; base class for bridge errors |
 | `UnknownProviderError` | Requested adapter is absent; includes `provider` |
 | `UnknownDialectError` | Requested converter is absent; includes `dialect` |
-| `UnsupportedFeatureError` | A mapping cannot express a feature, a dialect is response-only, or an adapter lacks discovery; includes `target` and `feature` |
-| `ProviderHttpError` | Ollama returns a non-success HTTP response; includes `status` and native `body` |
+| `UnsupportedFeatureError` | A mapping cannot express a feature, a dialect is response-only, or an adapter lacks discovery or allowance (allowance uses `feature === "allowance"`); includes `target` and `feature` |
+| `ProviderHttpError` | A provider returns a non-success HTTP response; includes `status`, native `body` and the provider name in the message (e.g. `DeepSeek returned HTTP 401`) |
 
 OpenAI and Anthropic SDK errors and transport failures propagate to the caller. The library does not turn them into HTTP responses, retry them, or automatically select another provider.
 

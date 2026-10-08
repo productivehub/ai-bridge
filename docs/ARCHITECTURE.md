@@ -33,6 +33,8 @@ contract remains unchanged. OpenAI uses Models through its SDK; Anthropic uses
 its SDK Models API and fetches all pages; both Ollama adapters use `/api/tags`.
 Model-list payloads exclude SDK clients and internal request state.
 
+`bridge.getAllowance({ provider })` dispatches the optional provider allowance method and returns `BridgeAllowanceResponse { provider, available, primary, windows, usage?, raw, meta }`. `available` is the provider's own verdict that calls will succeed (`null` when it has none), `primary` is the window that gates calls, and each `AllowanceWindow` carries a stable `id`, a `kind` (`money` or `plan`), an optional `label`, optional `limit`, `remaining` and `used` amounts as `BridgeCost`, a `remainingFraction`, an optional `period` and the native `raw`. Ollama Cloud reads `/api/balance` and `/api/usage` concurrently with a 15 s default timeout and treats the usage read as optional; DeepSeek reads `/user/balance` with its own key and base URL. Adapters without the method throw `UnsupportedFeatureError` with `feature === "allowance"`.
+
 Requests default to the `bridge` baseline. A registered dialect can optionally implement `toBaseline` to accept native inputs. This request conversion belongs to the bridge, not to providers.
 
 ## Architecture
@@ -56,7 +58,7 @@ caller ◀── BridgeResponse { output: BridgeOutput, usage, raw, meta }
 - `src/types.ts`: SDK-free generic contracts for provider/dialect registries, requests and responses. It does not enumerate provider or native dialect names.
 - `src/baseline.ts`: the canonical input, messages, blocks, tools, output choices and usage. Defined independently of vendor SDKs.
 - `src/bridge.ts`: instance-local registries, request conversion, dispatch, response wrapping and timing. The intrinsic `bridge` dialect is reserved.
-- `src/providers/`: built-in provider communication. Every provider implements `complete(ProviderRequest): Promise<ProviderResponse>` and only accepts/returns the canonical baseline. Optional `listModels()` returns canonical model metadata and native list data. Four opt-in providers: OpenAI, Anthropic, local Ollama and Ollama Cloud. The latter two share native chat, model discovery and connection handling.
+- `src/providers/`: built-in provider communication. Every provider implements `complete(ProviderRequest): Promise<ProviderResponse>` and only accepts/returns the canonical baseline. Optional `listModels()` returns canonical model metadata and native list data, and optional `getAllowance()` returns the provider's remaining quota and usage. Five opt-in providers: OpenAI, Anthropic, DeepSeek, local Ollama and Ollama Cloud. The two Ollama adapters share native chat, model discovery and connection handling; DeepSeek reuses the OpenAI SDK for completion and implements discovery and allowance as direct GETs on its own resolved key and base URL.
 - `src/dialects/`: conversions between baseline and vendor shapes. The OpenAI and Anthropic modules also contain the wire mappings their provider implementations reuse. The Ollama dialect is a response converter; its module contains mappings for the native provider API.
 
 Providers and dialects are passed to `createBridge` at startup as named objects. Custom names, implementations, inputs and outputs require no central union changes. There is no global registration API. `createBuiltInProviders` is an optional convenience defined in the providers folder. It captures configured keys and URLs at startup and omits unconfigured providers. Local Ollama requires an explicit URL. SDK clients are initialized only when used.
@@ -79,7 +81,7 @@ Canonical usage counts input/output inclusively. Anthropic input totals sum ordi
 
 Implemented: non-streaming chat, text and image inputs, function tools and tool history, reasoning/thinking controls, cache accounting, structured output mappings, native extensions, response projections, environment/config credentials, injected transports, and timings. Support is provider-dependent and unsupported request conversions are explicit errors.
 
-OpenAI uses Chat Completions through its official SDK; Anthropic uses Messages through its SDK. Ollama uses native `/api/chat`, preserving runtime options, thinking and durations. Cloud uses the same native API with bearer authentication. SDK automatic retries are disabled.
+OpenAI uses Chat Completions through its official SDK; Anthropic uses Messages through its SDK. DeepSeek uses its own OpenAI-compatible Chat Completions through the same SDK, always with its resolved DeepSeek key and base URL. Ollama uses native `/api/chat`, preserving runtime options, thinking and durations. Cloud uses the same native API with bearer authentication. SDK automatic retries are disabled. Allowance reads exist for Ollama Cloud (`/api/balance` plus optional `/api/usage`) and DeepSeek (`/user/balance`); other adapters reject the request with `UnsupportedFeatureError`.
 
 Deferred: streaming, embeddings, batches, retry/fallback orchestration, price calculation and response caching. These need method-specific contracts; they are not implied by the non-streaming chat baseline.
 
