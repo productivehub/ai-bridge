@@ -18,7 +18,7 @@ export class OllamaProvider implements ProviderAdapter {
   private readonly config: ProviderConfig;
   constructor(config: ProviderConfig = {}, private readonly cloud = false) { this.config = { ...config }; }
 
-  protected async request(path: string, init: RequestInit): Promise<unknown> {
+  protected async request(path: string, init: RequestInit, defaultTimeoutMs = 600_000): Promise<unknown> {
     const config = this.config;
     const baseURL = config.baseURL ?? (this.cloud
       ? process.env.OLLAMA_CLOUD_BASE_URL ?? "https://ollama.com"
@@ -31,7 +31,7 @@ export class OllamaProvider implements ProviderAdapter {
     const response = await (config.fetch ?? globalThis.fetch)(`${root}${path}`, {
       ...init,
       headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-      signal: AbortSignal.timeout(config.timeoutMs ?? 600_000),
+      signal: AbortSignal.timeout(config.timeoutMs ?? defaultTimeoutMs),
     });
     if (!response.ok) throw new ProviderHttpError(response.status, await response.text());
     const raw: unknown = await response.json();
@@ -107,18 +107,24 @@ function usageSlice(value: unknown, what: string): Omit<AllowanceUsage, "buckets
   };
 }
 
+const ALLOWANCE_TIMEOUT_MS = 15_000;
+const nonNegative = (value: number): number => Math.max(0, value);
+
 export class OllamaCloudProvider extends OllamaProvider {
   constructor(config: ProviderConfig = {}) { super(config, true); }
 
   async getAllowance(): Promise<ProviderAllowanceResponse> {
-    const balance = await this.request("/api/balance", { method: "GET" });
-    const usageRaw = await this.request("/api/usage", { method: "GET" });
+    const get = (path: string) => this.request(path, { method: "GET" }, ALLOWANCE_TIMEOUT_MS);
+    // Usage is optional: any transport/HTTP failure drops it, a balance failure still throws.
+    const usagePending = get("/api/usage").then((value) => ({ ok: true as const, value }), () => ({ ok: false as const }));
+    const balance = await get("/api/balance");
+    const usageResult = await usagePending;
     const b = record(balance, "balance");
     const included = record(b.included, "balance.included");
     const purchased = record(b.purchased, "balance.purchased");
     const period = record(included.period, "balance.included.period");
-    const allowanceUsd = count(included.allowance_usd, "allowance_usd");
-    const balanceUsd = count(included.balance_usd, "balance_usd");
+    const allowanceUsd = nonNegative(count(included.allowance_usd, "allowance_usd"));
+    const balanceUsd = nonNegative(count(included.balance_usd, "balance_usd"));
     const includedWindow: AllowanceWindow = {
       id: "included", kind: "money", label: "Included credit",
       limit: usd(allowanceUsd, "allowance_usd"), remaining: usd(balanceUsd, "balance_usd"),
@@ -128,15 +134,15 @@ export class OllamaCloudProvider extends OllamaProvider {
     };
     const purchasedWindow: AllowanceWindow = {
       id: "purchased", kind: "money", label: "Purchased credit",
-      remaining: usd(purchased.balance_usd, "purchased.balance_usd"), remainingFraction: null, raw: purchased,
+      remaining: usd(nonNegative(count(purchased.balance_usd, "purchased.balance_usd")), "purchased.balance_usd"), remainingFraction: null, raw: purchased,
     };
+    const windows = [includedWindow, purchasedWindow];
+    if (!usageResult.ok) return { available: null, primary: includedWindow, windows, raw: { balance } };
+    const usageRaw = usageResult.value;
     const u = record(usageRaw, "usage");
     const { partial: _partial, ...totals } = usageSlice({ from: u.from, until: u.until, ...record(u.totals, "usage.totals") }, "usage");
     if (!Array.isArray(u.buckets)) throw new BridgeError("Ollama Cloud returned an invalid usage.buckets");
     const usage: AllowanceUsage = { ...totals, buckets: u.buckets.map((x, i) => usageSlice(x, `usage.buckets[${i}]`)) };
-    return {
-      available: null, primary: includedWindow, windows: [includedWindow, purchasedWindow], usage,
-      raw: { balance, usage: usageRaw },
-    };
+    return { available: null, primary: includedWindow, windows, usage, raw: { balance, usage: usageRaw } };
   }
 }

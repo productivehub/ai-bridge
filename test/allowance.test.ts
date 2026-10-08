@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBridge, BridgeError, toMinorUnits, UnknownProviderError, UnsupportedFeatureError,
   OllamaProvider, OllamaCloudProvider, ProviderHttpError,
@@ -177,5 +177,99 @@ describe("OllamaCloudProvider.getAllowance (A4)", () => {
   it("is not offered by local Ollama", () => {
     expect("getAllowance" in new OllamaProvider()).toBe(false);
     expect("getAllowance" in new OllamaCloudProvider({ apiKey: "k" })).toBe(true);
+  });
+});
+
+describe("OllamaCloudProvider.getAllowance resilience (F2/F3)", () => {
+  const ok = { "/api/balance": { body: balanceFixture }, "/api/usage": { body: usageFixture } };
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("defaults the allowance GET timeout to 15s, leaving complete/listModels at 10 minutes", async () => {
+    const spy = vi.spyOn(AbortSignal, "timeout");
+    const chat = { model: "m", created_at: "2026-10-08T00:00:00Z", done: true, message: { role: "assistant", content: "hi" } };
+    const t = transport({ ...ok, "/api/chat": { body: chat }, "/api/tags": { body: { models: [] } } });
+    const p = new OllamaCloudProvider({ apiKey: "k", fetch: t.fetch });
+    await p.getAllowance();
+    expect(spy.mock.calls.map((c) => c[0])).toEqual([15_000, 15_000]);
+    spy.mockClear();
+    await p.listModels();
+    await p.complete({ model: "m", input: { messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }] } } as never);
+    expect(spy.mock.calls.map((c) => c[0])).toEqual([600_000, 600_000]);
+  });
+
+  it("honours an explicit config.timeoutMs for allowance GETs", async () => {
+    const spy = vi.spyOn(AbortSignal, "timeout");
+    const t = transport(ok);
+    await new OllamaCloudProvider({ apiKey: "k", fetch: t.fetch, timeoutMs: 1234 }).getAllowance();
+    expect(spy.mock.calls.map((c) => c[0])).toEqual([1234, 1234]);
+  });
+
+  it("issues the balance and usage GETs concurrently", async () => {
+    let usageSeen!: () => void;
+    const seen = new Promise<void>((resolve) => { usageSeen = resolve; });
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const path = new URL(new Request(input).url).pathname;
+      if (path === "/api/usage") usageSeen();
+      else await seen; // balance cannot answer until usage has been requested
+      const body = path === "/api/usage" ? usageFixture : balanceFixture;
+      return new Response(JSON.stringify(body), { status: 200 });
+    };
+    const res = await new OllamaCloudProvider({ apiKey: "k", fetch }).getAllowance();
+    expect(res.usage?.requests).toBe(1135);
+  });
+
+  it.each([404, 500])("returns the balance without usage when /api/usage fails with %i", async (status) => {
+    const t = transport({ ...ok, "/api/usage": { body: { error: "nope" }, status } });
+    const res = await new OllamaCloudProvider({ apiKey: "k", fetch: t.fetch }).getAllowance();
+    expect(res.usage).toBeUndefined();
+    expect(res.windows).toHaveLength(2);
+    expect(res.primary?.id).toBe("included");
+    expect(res.raw).toEqual({ balance: balanceFixture });
+  });
+
+  it("returns the balance without usage when /api/usage times out", async () => {
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const path = new URL(new Request(input).url).pathname;
+      if (path === "/api/balance") return new Response(JSON.stringify(balanceFixture), { status: 200 });
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      });
+    };
+    const res = await new OllamaCloudProvider({ apiKey: "k", fetch, timeoutMs: 20 }).getAllowance();
+    expect(res.usage).toBeUndefined();
+    expect(res.windows).toHaveLength(2);
+  });
+
+  it.each([404, 500])("still throws when /api/balance fails with %i", async (status) => {
+    const t = transport({ ...ok, "/api/balance": { body: { error: "x" }, status } });
+    const err = await new OllamaCloudProvider({ apiKey: "k", fetch: t.fetch }).getAllowance().catch((e) => e);
+    expect(err).toBeInstanceOf(ProviderHttpError);
+    expect(err.status).toBe(status);
+    expect(err.message).toBe(`Ollama returned HTTP ${status}`);
+  });
+
+  it("still throws when /api/balance fails while /api/usage also fails", async () => {
+    const t = transport({ "/api/balance": { body: {}, status: 500 }, "/api/usage": { body: {}, status: 500 } });
+    await expect(new OllamaCloudProvider({ apiKey: "k", fetch: t.fetch }).getAllowance()).rejects.toBeInstanceOf(ProviderHttpError);
+  });
+
+  it("clamps negative balances to remaining 0 instead of throwing", async () => {
+    const body = {
+      included: { ...balanceFixture.included, balance_usd: -2.5 },
+      purchased: { balance_usd: -1 },
+    };
+    const res = await new OllamaCloudProvider({ apiKey: "k", fetch: transport({ ...ok, "/api/balance": { body } }).fetch }).getAllowance();
+    expect(res.windows[0]).toMatchObject({ limit: { amount: 6000 }, remaining: { currency: "USD", amount: 0 }, remainingFraction: 0 });
+    expect(res.windows[1]).toMatchObject({ remaining: { currency: "USD", amount: 0 } });
+  });
+
+  it("clamps a negative allowance to 0 with a null fraction", async () => {
+    const body = { ...balanceFixture, included: { ...balanceFixture.included, allowance_usd: -60 } };
+    const res = await new OllamaCloudProvider({ apiKey: "k", fetch: transport({ ...ok, "/api/balance": { body } }).fetch }).getAllowance();
+    expect(res.windows[0]).toMatchObject({ limit: { amount: 0 }, remainingFraction: null });
+  });
+
+  it("keeps the HTTP error message for local Ollama byte-identical", () => {
+    expect(new ProviderHttpError(503, "x").message).toBe("Ollama returned HTTP 503");
   });
 });
