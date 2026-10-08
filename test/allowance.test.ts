@@ -69,6 +69,12 @@ describe("toMinorUnits (A3)", () => {
   it.each(["abc", "", "  ", "NaN", "Infinity", "-1", "-0.01"])("rejects the string %o", (value) => {
     expect(() => toMinorUnits(value)).toThrow(BridgeError);
   });
+  it.each(["1e400", "1e100000000", "1e-99999999999999999999", "9007199254740993", "1e308", 1e308, 1e21])(
+    "rejects out-of-range magnitude %o",
+    (value) => {
+      expect(() => toMinorUnits(value)).toThrow(BridgeError);
+    },
+  );
   it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])("rejects the number %o", (value) => {
     expect(() => toMinorUnits(value)).toThrow(BridgeError);
   });
