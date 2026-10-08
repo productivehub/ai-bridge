@@ -147,14 +147,14 @@ that actually gates calls. `AllowanceUsage` reports the `from`/`until` period, r
 counts, cost, token totals, and optional time `buckets`.
 
 Ollama Cloud implements the query from its `/api/balance` and `/api/usage` endpoints,
-using the configured bearer key. Every other built-in provider throws
-`UnsupportedFeatureError` with `feature === "allowance"`, and an unknown provider throws
-`UnknownProviderError`. Custom adapters opt in by implementing
+using the configured bearer key. No other built-in provider implements it, so the bridge
+throws `UnsupportedFeatureError` with `feature === "allowance"`, and an unknown provider
+name throws `UnknownProviderError`. Custom adapters opt in by implementing
 `getAllowance(): Promise<ProviderAllowanceResponse>`.
 
-Reported amounts are USD decimals, not minor units. `toMinorUnits(value,
-fractionDigits = 2)` converts them to integer amounts for a `BridgeCost`; it works on the
-decimal string and rounds half-up, so `toMinorUnits("1.005")` is `101`.
+Reported amounts are USD decimals, not minor units. `toMinorUnits(value, fractionDigits = 2)`
+converts them to integer amounts for a `BridgeCost`; it works on the decimal string and
+rounds half-up, so `toMinorUnits("1.005")` is `101`.
 
 ## Native input, canonical response
 
