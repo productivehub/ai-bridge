@@ -48,7 +48,7 @@ describe("startup injection", () => {
     const converted = res.toDialect("my-format");
     expectTypeOf(converted).toEqualTypeOf<{ answer: string; tokens: number | null }>();
     expect(converted).toEqual({ answer: "test-1", tokens: 14 });
-    expect(bridge.dialects()).toEqual(["bridge", "my-format"]);
+    expect(bridge.dialects()).toEqual(["bridge", "structured", "my-format"]);
   });
 
   it("supports response-only dialects and conversions detached from the response", async () => {

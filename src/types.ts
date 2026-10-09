@@ -6,10 +6,10 @@ export interface ProviderRequest {
   input: BridgeInput;
 }
 
-export interface ProviderResponse {
-  output: BridgeOutput;
+export interface ProviderResponse<Structured = unknown, Raw = unknown> {
+  output: BridgeOutput<Structured>;
   /** Untouched wire response. */
-  raw: unknown;
+  raw: Raw;
 }
 
 /** A monetary amount expressed in the currency's smallest denomination. */
@@ -88,21 +88,38 @@ export type DialectRegistry = Readonly<Record<string, DialectService<never, unkn
 export type DialectInput<T> = T extends { toBaseline(input: infer I): BridgeInput } ? I : never;
 export type DialectOutput<T> = T extends { fromBaseline(output: BridgeOutput): infer O } ? O : never;
 
-export type BridgeRequest<P extends string = string, D extends DialectRegistry = DialectRegistry> =
-  | { provider: P; model: string; input: BridgeInput; dialect?: undefined }
-  | { [K in keyof D & string]: { provider: P; model: string; dialect: K; input: DialectInput<D[K]> } }[keyof D & string];
+export interface BridgeCompletionOptions<D extends DialectRegistry = DialectRegistry> {
+  /** Output projection, independent of the request's input dialect. */
+  outputDialect?: (keyof D & string) | "bridge" | "structured";
+  response?: ResponseMode;
+}
 
-export interface BridgeResponse<D extends DialectRegistry = DialectRegistry> {
+export type BridgeRequest<P extends string = string, D extends DialectRegistry = DialectRegistry> = BridgeCompletionOptions<D> & (
+  | { provider: P; model: string; input: BridgeInput; dialect?: undefined }
+  | { [K in keyof D & string]: { provider: P; model: string; dialect: K; input: DialectInput<D[K]> } }[keyof D & string]
+);
+
+/** both keeps the response envelope and raw data; output omits raw; raw returns only native data. */
+export type ResponseMode = "both" | "output" | "raw";
+
+export interface BridgeOutputResponse<D extends DialectRegistry = DialectRegistry, Output = BridgeOutput> {
   provider: string;
   model: string;
-  readonly dialect: "bridge";
-  output: BridgeOutput;
+  readonly dialect: string;
+  output: Output;
   usage: BridgeUsage;
-  raw: unknown;
   /** Bridge-observed timestamps and monotonic elapsed duration. */
   meta: BridgeResponseMeta;
-  /** Native response projection. Full information remains in output/raw. */
+  /** Caller-defined type is a compile-time contract, not runtime schema validation. */
+  toDialect<T = unknown>(dialect: "structured"): T;
+  /** Native response projection; always converts the original canonical output. */
   toDialect<K extends keyof D & string>(dialect: K): DialectOutput<D[K]>;
+}
+
+export interface BridgeResponse<D extends DialectRegistry = DialectRegistry, Output = BridgeOutput, Raw = unknown>
+  extends BridgeOutputResponse<D, Output> {
+  /** Untouched provider response. */
+  raw: Raw;
 }
 
 /** Common connection options for built-ins; custom providers may define their own. */

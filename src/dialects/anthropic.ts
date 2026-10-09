@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { evaluationContentToText } from "../evaluation.js";
 import type { AnthropicInput } from "./types.js";
 import type { ContentBlock, BridgeInput, BridgeMessage, BridgeOutput, BridgeTool, BridgeUsage } from "../baseline.js";
 import { blocks, extras, nativeFields, requestFields, requireAbsent, toolInput, unsupported } from "./shared.js";
@@ -121,6 +122,7 @@ function toBlock(block: ContentBlock): NativeBlock {
     case "refusal": return { type: "text", text: block.text };
     case "native": return block.dialect === "anthropic" ? block.value as unknown as NativeBlock : unsupported("anthropic", `${block.dialect} content block`);
     case "audio": return unsupported("anthropic", "audio input");
+    case "boolean": case "choice": case "score": return unsupported("anthropic", `${block.type} input block`);
   }
 }
 
@@ -249,7 +251,7 @@ export function baselineToAnthropicOutput(output: BridgeOutput): Message {
   return {
     container: null, diagnostics: null, stop_details: null, ...output.extensions?.anthropic,
     id: output.id, model: output.model, type: "message", role: "assistant",
-    content: blocks(choice.message).flatMap((b) => { const projected = outputBlock(b); return projected ? [projected] : []; }),
+    content: evaluationContentToText(blocks(choice.message), "anthropic").flatMap((b) => { const projected = outputBlock(b); return projected ? [projected] : []; }),
     stop_reason: (choice.extensions?.anthropic?.stop_reason ?? ({ "stop": choice.stopSequence ? "stop_sequence" : "end_turn", "length": "max_tokens", "tool-calls": "tool_use", "refusal": "refusal", "content-filter": "refusal", "pause": "pause_turn", "context-limit": "model_context_window_exceeded", "unknown": "end_turn" } as const)[choice.finishReason]) as Message["stop_reason"],
     stop_sequence: choice.stopSequence ?? null, usage: baselineToAnthropicUsage(output.usage),
   };

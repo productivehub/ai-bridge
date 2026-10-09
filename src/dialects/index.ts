@@ -6,6 +6,7 @@ import { openAIInputToBaseline, baselineToOpenAIOutput } from "./openai.js";
 import { anthropicInputToBaseline, baselineToAnthropicOutput } from "./anthropic.js";
 
 export { bridgeDialect } from "./bridge.js";
+export { structuredDialect, baselineToStructuredOutput } from "./structured.js";
 
 export const openaiDialect = {
   toBaseline: openAIInputToBaseline,
@@ -20,3 +21,5 @@ export const anthropicDialect = {
 export type * from "./types.js";
 export { ollamaDialect } from "./ollama.js";
 export type { OllamaOutput, OllamaMessage } from "./ollama.js";
+export { jevDialect } from "./jev.js";
+export type { JevJson, JevDescription, JevQuestion, JevInput, JevAnswer, JevOutput } from "./jev.js";

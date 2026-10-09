@@ -3,15 +3,17 @@ import { OpenAIProvider } from "./openai.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OllamaProvider, OllamaCloudProvider } from "./ollama.js";
 import { DeepSeekProvider } from "./deepseek.js";
+import { JevProvider } from "./jev.js";
 import type { ProviderConfig } from "../types.js";
 
-export { OpenAIProvider, AnthropicProvider, DeepSeekProvider, OllamaProvider, OllamaCloudProvider };
+export { OpenAIProvider, AnthropicProvider, DeepSeekProvider, JevProvider, OllamaProvider, OllamaCloudProvider };
 export { ProviderHttpError } from "./ollama.js";
 
 export interface BuiltInProviderConfig {
   openai?: ProviderConfig;
   anthropic?: ProviderConfig;
   deepseek?: ProviderConfig;
+  jev?: ProviderConfig;
   ollama?: ProviderConfig;
   "ollama-cloud"?: ProviderConfig;
 }
@@ -20,6 +22,7 @@ export type BuiltInProviders = {
   openai?: OpenAIProvider;
   anthropic?: AnthropicProvider;
   deepseek?: DeepSeekProvider;
+  jev?: JevProvider;
   ollama?: OllamaProvider;
   "ollama-cloud"?: OllamaCloudProvider;
 };
@@ -50,6 +53,11 @@ export function resolveBuiltInProviderConfig(
     ...config.deepseek, apiKey: deepseekKey,
     baseURL: configured(config.deepseek?.baseURL, env.DEEPSEEK_BASE_URL) ?? "https://api.deepseek.com",
   };
+  const jevKey = configured(config.jev?.apiKey, env.TYPESAFE_API_KEY);
+  if (jevKey) providers.jev = {
+    ...config.jev, apiKey: jevKey,
+    baseURL: configured(config.jev?.baseURL, env.TYPESAFE_BASE_URL) ?? "https://api.typesafe.ai/v1",
+  };
   const ollamaURL = configured(config.ollama?.baseURL, env.OLLAMA_BASE_URL);
   if (ollamaURL) providers.ollama = {
     ...config.ollama, baseURL: ollamaURL,
@@ -73,6 +81,7 @@ export function createBuiltInProviders(
     ...(settings.openai ? { openai: new OpenAIProvider(settings.openai) } : {}),
     ...(settings.anthropic ? { anthropic: new AnthropicProvider(settings.anthropic) } : {}),
     ...(settings.deepseek ? { deepseek: new DeepSeekProvider(settings.deepseek) } : {}),
+    ...(settings.jev ? { jev: new JevProvider(settings.jev) } : {}),
     ...(settings.ollama ? { ollama: new OllamaProvider(settings.ollama) } : {}),
     ...(settings["ollama-cloud"] ? { "ollama-cloud": new OllamaCloudProvider(settings["ollama-cloud"]) } : {}),
   };

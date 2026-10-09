@@ -1,16 +1,30 @@
 import { BridgeError, UnknownDialectError, UnknownProviderError, UnsupportedFeatureError } from "./errors.js";
 import { bridgeDialect } from "./dialects/bridge.js";
+import { structuredDialect } from "./dialects/structured.js";
 import type { BridgeInput } from "./baseline.js";
 import type {
-  DialectInput, DialectOutput, DialectRegistry, DialectService, ProviderRegistry,
-  BridgeRequest, BridgeConfig, BridgeResponse, ListModelsRequest, BridgeModelsResponse,
+  DialectInput, DialectRegistry, DialectService, ProviderRegistry,
+  BridgeRequest, BridgeConfig, BridgeResponse, BridgeOutputResponse, ListModelsRequest, BridgeModelsResponse,
   AllowanceRequest, BridgeAllowanceResponse, BridgeResponseMeta,
 } from "./types.js";
 
-type WithBaseline<D extends DialectRegistry> = D & { bridge: typeof bridgeDialect };
+type WithBaseline<D extends DialectRegistry> = D & { bridge: typeof bridgeDialect; structured: typeof structuredDialect };
+type CompletionRequest<P extends string, D extends DialectRegistry> = BridgeRequest<P, D>;
 
 export interface Bridge<P extends ProviderRegistry = ProviderRegistry, D extends DialectRegistry = DialectRegistry> {
-  complete(req: BridgeRequest<keyof P & string, WithBaseline<D>>): Promise<BridgeResponse<WithBaseline<D>>>;
+  complete<Raw = unknown>(req: CompletionRequest<keyof P & string, WithBaseline<D>> & { response: "raw" }): Promise<Raw>;
+  complete<Output = unknown>(req: CompletionRequest<keyof P & string, WithBaseline<D>> & {
+    outputDialect: keyof WithBaseline<D> & string; response: "output";
+  }): Promise<BridgeOutputResponse<WithBaseline<D>, Output>>;
+  complete<Output = unknown, Raw = unknown>(req: CompletionRequest<keyof P & string, WithBaseline<D>> & {
+    outputDialect: keyof WithBaseline<D> & string; response?: "both";
+  }): Promise<BridgeResponse<WithBaseline<D>, Output, Raw>>;
+  complete(req: CompletionRequest<keyof P & string, WithBaseline<D>> & {
+    outputDialect?: undefined; response: "output";
+  }): Promise<BridgeOutputResponse<WithBaseline<D>>>;
+  complete(req: CompletionRequest<keyof P & string, WithBaseline<D>> & {
+    outputDialect?: undefined; response?: "both";
+  }): Promise<BridgeResponse<WithBaseline<D>>>;
   listModels(req: ListModelsRequest<keyof P & string>): Promise<BridgeModelsResponse>;
   getAllowance(req: AllowanceRequest<keyof P & string>): Promise<BridgeAllowanceResponse>;
   providers(): (keyof P & string)[];
@@ -20,9 +34,11 @@ export interface Bridge<P extends ProviderRegistry = ProviderRegistry, D extends
 /** Startup injection creates isolated registries; there is no shared global state. */
 export function createBridge<const P extends ProviderRegistry, const D extends DialectRegistry = {}>(config: BridgeConfig<P, D>): Bridge<P, D> {
   const providers = new Map(Object.entries(config.providers));
-  if (config.dialects && "bridge" in config.dialects) throw new BridgeError('"bridge" is the built-in baseline dialect');
+  for (const name of ["bridge", "structured"]) {
+    if (config.dialects && name in config.dialects) throw new BridgeError(`"${name}" is a built-in dialect`);
+  }
   const dialects = new Map<string, DialectService<never, unknown>>([
-    ["bridge", bridgeDialect], ...Object.entries(config.dialects ?? {}),
+    ["bridge", bridgeDialect], ["structured", structuredDialect], ...Object.entries(config.dialects ?? {}),
   ]);
 
   function service(name: string): DialectService<unknown, unknown> {
@@ -38,7 +54,34 @@ export function createBridge<const P extends ProviderRegistry, const D extends D
     return () => ({ startedAt, endedAt: new Date().toISOString(), durationMs: performance.now() - start });
   }
 
+  async function complete(req: CompletionRequest<keyof P & string, WithBaseline<D>>): Promise<unknown> {
+    const meta = startTimer();
+    const provider = providers.get(req.provider);
+    if (!provider) throw new UnknownProviderError(req.provider);
+    const mode = req.response ?? "both";
+    if (!["both", "output", "raw"].includes(mode)) throw new BridgeError("Unknown response mode");
+    const outputDialect = req.outputDialect ?? "bridge";
+    const outputService = service(outputDialect);
+    let input: BridgeInput;
+    if (req.dialect === undefined) input = req.input as BridgeInput;
+    else {
+      const converter = service(req.dialect);
+      if (!converter.toBaseline) throw new UnsupportedFeatureError(req.dialect, "input conversion (response-only dialect)");
+      input = converter.toBaseline(req.input as DialectInput<typeof converter>);
+    }
+    const result = await provider.complete({ model: req.model, input });
+    if (mode === "raw") return result.raw;
+    const response: BridgeOutputResponse<WithBaseline<D>, unknown> = {
+      provider: req.provider, model: req.model, dialect: outputDialect,
+      output: outputService.fromBaseline(result.output), usage: result.output.usage,
+      meta: meta(),
+      toDialect: ((name: string) => service(name).fromBaseline(result.output)) as BridgeOutputResponse<WithBaseline<D>>["toDialect"],
+    };
+    return mode === "output" ? response : { ...response, raw: result.raw };
+  }
+
   return {
+    complete: complete as Bridge<P, D>["complete"],
     async getAllowance(req) {
       const meta = startTimer();
       const provider = providers.get(req.provider);
@@ -57,28 +100,6 @@ export function createBridge<const P extends ProviderRegistry, const D extends D
         provider: req.provider, models: result.models, raw: result.raw,
         meta: meta(),
       };
-    },
-    async complete(req) {
-      const meta = startTimer();
-      const provider = providers.get(req.provider);
-      if (!provider) throw new UnknownProviderError(req.provider);
-      let input: BridgeInput;
-      if (req.dialect === undefined) input = req.input as BridgeInput;
-      else {
-        const converter = service(req.dialect);
-        if (!converter.toBaseline) throw new UnsupportedFeatureError(req.dialect, "input conversion (response-only dialect)");
-        input = converter.toBaseline(req.input as DialectInput<typeof converter>);
-      }
-      const result = await provider.complete({ model: req.model, input });
-      const response: BridgeResponse<WithBaseline<D>> = {
-        provider: req.provider, model: req.model, dialect: "bridge",
-        output: result.output, usage: result.output.usage, raw: result.raw,
-        meta: meta(),
-        toDialect<K extends keyof WithBaseline<D> & string>(name: K): DialectOutput<WithBaseline<D>[K]> {
-          return service(name).fromBaseline(response.output) as DialectOutput<WithBaseline<D>[K]>;
-        },
-      };
-      return response;
     },
     providers: () => [...providers.keys()] as (keyof P & string)[],
     dialects: () => [...dialects.keys()] as (keyof WithBaseline<D> & string)[],
