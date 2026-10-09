@@ -1,4 +1,4 @@
-/** Provider-neutral, non-streaming chat contract. No SDK types belong here. */
+/** Provider-neutral, non-streaming messages and evaluations. No SDK types belong here. */
 export type WireDialect = string;
 export type JSONSchema = Record<string, unknown>;
 
@@ -20,7 +20,18 @@ interface BlockMetadata {
   extensions?: NativeFields;
 }
 
+/** Provider-neutral evaluation answers; probabilities and confidence are in [0, 1]. */
+export type EvaluationAnswer =
+  /** null means no true/false decision was reported; probability still preserves the evaluation. */
+  | { type: "boolean"; value: boolean | null; probability?: number }
+  | { type: "choice"; value: string; probabilities?: Record<string, number>; confidence?: number }
+  | { type: "score"; value: number; legend?: Record<string, string>; probabilities?: Record<string, number>; confidence?: number };
+
+/** The ID associates an answer with its question across providers. */
+export type EvaluationBlock = BlockMetadata & { id: string } & EvaluationAnswer;
+
 export type ContentBlock = BlockMetadata & (
+  | EvaluationBlock
   | { type: "text"; text: string; citations?: unknown[] }
   | { type: "image"; source: MediaSource; detail?: "auto" | "low" | "high" | "original" }
   | { type: "document"; source: MediaSource; name?: string }
@@ -120,11 +131,13 @@ export interface BridgeChoice {
   extensions?: NativeFields;
 }
 
-export interface BridgeOutput {
+export interface BridgeOutput<Structured = unknown> {
   id: string;
   model: string;
   createdAt?: string;
   choices: BridgeChoice[];
   usage: BridgeUsage;
+  /** Native structured answer, when the provider returns data rather than chat text. */
+  structured?: Structured;
   extensions?: NativeFields;
 }

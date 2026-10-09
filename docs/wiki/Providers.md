@@ -9,10 +9,13 @@ A provider handles communication with an upstream API and converts its response 
 | `OpenAIProvider` | Chat Completions through the OpenAI SDK | Models through the SDK |
 | `AnthropicProvider` | Messages through the Anthropic SDK | Models through the SDK, including all pages |
 | `DeepSeekProvider` | OpenAI-compatible Chat Completions through the OpenAI SDK, with its own key and base URL | Direct `GET /models` on that key and base URL |
+| `JevProvider` | TypeSafe `POST /v1/systemone` with bearer authentication | `GET /v1/models` |
 | `OllamaProvider` | Native `/api/chat` | Native `/api/tags` |
 | `OllamaCloudProvider` | Native `/api/chat` with bearer authentication | Native `/api/tags` with bearer authentication |
 
 Classes are exported from both `@productivehub/ai-bridge` and `@productivehub/ai-bridge/providers`. Ollama Cloud shares the native Ollama implementation. DeepSeek never reads the `OPENAI_*` environment, and its direct GETs strip the OpenAI SDK's organization/project headers. Built-in requests are non-streaming, and SDK automatic retries are disabled. For `bridge.getAllowance`, `OllamaCloudProvider` reads `/api/balance` plus optional `/api/usage` and `DeepSeekProvider` reads `/user/balance`; the other built-ins throw `UnsupportedFeatureError` with `feature === "allowance"`.
+
+Jev uses `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` (default `https://api.typesafe.ai/v1`), captured at construction. It evaluates state against named Noul, Choice and Score questions. See [Jev usage](https://github.com/productivehub/ai-bridge#jev-typesafe) for native and canonical input. It does not accept chat generation controls or report allowance. Model discovery retains descriptions in `raw` and maps `release_date` to `createdAt`; pricing and token limits are not inferred.
 
 Built-in request mappings reject features they cannot express. Registering another response dialect does not make the upstream provider support additional request features.
 

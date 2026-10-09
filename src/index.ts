@@ -4,5 +4,6 @@ export { BridgeError, UnknownProviderError, UnknownDialectError, UnsupportedFeat
 export { toMinorUnits } from "./money.js";
 export type * from "./types.js";
 export type * from "./baseline.js";
+export { isEvaluationBlock, evaluationAnswers } from "./evaluation.js";
 export * from "./providers/index.js";
 export * from "./dialects/index.js";

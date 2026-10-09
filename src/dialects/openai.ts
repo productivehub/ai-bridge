@@ -1,4 +1,5 @@
 import type OpenAI from "openai";
+import { evaluationContentToText } from "../evaluation.js";
 import type { OpenAIInput } from "./types.js";
 import type {
   ContentBlock, NativeFields, BridgeChoice, BridgeInput, BridgeMessage,
@@ -268,7 +269,7 @@ export function baselineToOpenAIOutput(output: BridgeOutput): Chat {
     ...output.extensions?.openai, id: output.id, model: output.model, object: "chat.completion",
     created: output.createdAt ? Math.floor(Date.parse(output.createdAt) / 1000) : Math.floor(Date.now() / 1000),
     choices: output.choices.map((choice) => {
-      const content = blocks(choice.message);
+      const content = evaluationContentToText(blocks(choice.message), "openai");
       const calls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] = content.flatMap((b) => b.type === "tool-call" ? [{
         ...b.extensions?.openai, id: b.id, type: "function" as const, function: { name: b.name, arguments: b.arguments ?? JSON.stringify(b.input) },
       }] : b.type === "native" && b.dialect === "openai" && b.value.type === "custom" ? [b.value as unknown as OpenAI.Chat.Completions.ChatCompletionMessageToolCall] : []);

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evaluationContentToText } from "../evaluation.js";
 import type { ContentBlock, BridgeInput, BridgeMessage, BridgeOutput, BridgeUsage } from "../baseline.js";
 import type { DialectService } from "../types.js";
 import { blocks, extras, nativeFields, requestFields, requireAbsent, textOnly, toolInput, unsupported } from "./shared.js";
@@ -139,7 +140,7 @@ export function ollamaOutputToBaseline(output: OllamaOutput): BridgeOutput {
 export function baselineToOllamaOutput(output: BridgeOutput): OllamaOutput {
   if (output.choices.length !== 1) return unsupported("ollama", "multiple response candidates");
   const choice = output.choices[0]!;
-  const content = blocks(choice.message);
+  const content = evaluationContentToText(blocks(choice.message), "ollama");
   const calls = content.filter((b) => b.type === "tool-call").map((b) => ({
     ...b.extensions?.ollama, function: { ...(b.extensions?.ollama?.function as object | undefined), name: b.name, arguments: toolInput(b.input, b.arguments, "ollama") },
   }));

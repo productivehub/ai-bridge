@@ -9,11 +9,13 @@ Providers communicate through this baseline. Dialects convert caller input into 
 | Name | Native request conversion | Response projection |
 | --- | --- | --- |
 | `bridge` | Canonical input | Canonical output, returned unchanged |
+| `structured` | Response-only dialect | Explicit structured data, an answer map from evaluation blocks, or one complete parsed JSON chat answer |
 | `openai` | OpenAI Chat Completions input | OpenAI Chat Completions response |
 | `anthropic` | Anthropic Messages input | Anthropic Messages response |
+| `jev` | TypeSafe state and typed questions (`JevInput`, without model) | TypeSafe typed answers and usage (`JevOutput`) |
 | `ollama` | Response-only dialect | Native Ollama chat response |
 
-The bridge baseline is intrinsic. Inject `openaiDialect`, `anthropicDialect`, or `ollamaDialect` under the names you want to expose. Dialect names do not have to match provider names.
+The `bridge` and response-only `structured` dialects are intrinsic and reserved. Inject `openaiDialect`, `anthropicDialect`, `jevDialect`, or `ollamaDialect` under the names you want to expose. Dialect names do not have to match provider names. See [caller-typed structured and raw responses](https://github.com/productivehub/ai-bridge#caller-typed-structured-and-raw-responses) for `complete<T>()`, `outputDialect` and the three response modes.
 
 ## Convert a response
 
@@ -48,6 +50,8 @@ const openai = response.toDialect("openai");
 Set the request's `dialect` to a registered service with `toBaseline(input)`. Omit `dialect` for canonical input. The returned response still uses the bridge baseline; request conversion does not select the output projection.
 
 For example, an Anthropic request uses `max_tokens` and Anthropic message blocks. The bridge converts these to canonical input before dispatching to the selected provider. A response-only dialect cannot be used as the input dialect.
+
+Jev input carries a single user state message and `extensions.jev.questions`. String state is text; object/array state uses `{ type: "native", dialect: "jev", value: { state } }`. The regular output content contains provider-neutral `boolean`, `choice` and `score` blocks keyed by question `id`. JEV's boolean result has `value: null` and its original `probability`; choice and score blocks use `value` and retain probabilities, confidence and score legends. Native answers remain under `output.extensions.jev.answers` for compatibility. The Jev projection reconstructs native answers from evaluation blocks and requires the corresponding metadata and known token counts. OpenAI, Anthropic and Ollama response projections serialize evaluation groups into JSON text. See [the Jev example](https://github.com/productivehub/ai-bridge#jev-typesafe).
 
 ## Add a custom response dialect
 
