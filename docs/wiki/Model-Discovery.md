@@ -40,9 +40,13 @@ console.log(catalog.provider, catalog.meta);
 | `sizeBytes` | No | Model size in bytes |
 | `costs` | No | Known pricing using `BridgeModelCosts`; see [Costs](./Costs.md) |
 
-Absent metadata is not inferred. OpenAI's Unix creation timestamps are converted to ISO 8601. Anthropic supplies display names, creation times, and token limits when reported. Ollama supplies names, modification timestamps, and sizes when reported.
+Absent metadata is not inferred. OpenAI's Unix creation timestamps are converted to ISO 8601. Anthropic supplies display names, creation times, and token limits when reported. Ollama supplies names, modification timestamps, and sizes when reported. Jev maps TypeSafe model `name` to `id`/`name` and `release_date` to `createdAt`, retaining descriptions in `raw`. It queries `/v1/models`; the catalog may list aliases while accepting versioned IDs that are absent from the list.
 
 Anthropic discovery follows every page and returns native pages under `raw.pages`. A failure on a later page rejects the request instead of returning a partial catalog. OpenAI retains its native list data; both Ollama adapters use `/api/tags`.
+
+DeepSeek queries `/models` directly with its own key and base URL. Its current
+catalog does not supply creation timestamps, pricing or token limits, so those
+fields remain absent.
 
 Catalogs can be empty. Local Ollama reports installed models; cloud discovery reports the cloud host's catalog. Discovery does not guarantee that every listed model supports chat completions.
 

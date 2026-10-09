@@ -1,6 +1,8 @@
+<img src="./assets/icon.svg" alt="AI Bridge icon" width="128" height="128" />
+
 # @productivehub/ai-bridge
 
-Call any AI model provider through one provider-neutral format. `ai-bridge` sits between your code and providers such as OpenAI, Anthropic, DeepSeek and Ollama: providers translate their native APIs into the `bridge` baseline, and dialects translate the baseline into whichever response shape you need. It does not choose models for you; you name the provider and model on each call. Completions return a `BridgeResponse`; use `res.toDialect(name)` when you need another response shape. Query provider model catalogs with `bridge.listModels({ provider })`.
+Call any AI model provider through one provider-neutral format. `ai-bridge` sits between your code and providers such as OpenAI, Anthropic, DeepSeek, Jev and Ollama: providers translate their native APIs into the `bridge` baseline, and dialects translate the baseline into whichever response shape you need. It does not choose models for you; you name the provider and model on each call. By default, completions return a `BridgeResponse`; use `res.toDialect(name)` when you need another response shape. Query provider model catalogs with `bridge.listModels({ provider })`.
 
 Created and maintained by [Segev Shmueli](https://github.com/segevsh) (`@segevsh`) as part of [productiveHub](https://github.com/productivehub).
 
@@ -62,17 +64,15 @@ const native = res.toDialect("ollama");   // OllamaOutput
 res.toDialect("bridge");                 // Same object as res.output
 ```
 
-Only injected providers and dialects are available. The `bridge` baseline dialect is intrinsic. Registries belong to each instance; there is no global registration state. Names and native input/output types are inferred from the objects passed at startup.
+Only injected providers and dialects are available, alongside the intrinsic `bridge` and response-only `structured` dialects. Registries belong to each instance; there is no global registration state. Names and native input/output types are inferred from the objects passed at startup.
 
 Providers are lightweight until first use. `createBuiltInProviders(config, env)`
 registers hosted providers only with nonempty keys and local Ollama only with an
 explicit base URL from config or `OLLAMA_BASE_URL`. Empty settings disable that
-provider. DeepSeek registers from `DEEPSEEK_API_KEY` (or `config.deepseek.apiKey`)
-and takes `DEEPSEEK_BASE_URL` as its base URL, defaulting to
-`https://api.deepseek.com`. The factory captures connections at startup; directly
-constructed adapters retain their documented environment fallbacks. OpenAI and
-Anthropic load their SDKs lazily. Ollama and Ollama Cloud share the native
-`/api/chat` implementation. Calls are non-streaming and do not retry automatically.
+provider. The factory captures connections at startup; directly constructed
+adapters retain their documented environment fallbacks. OpenAI and Anthropic load
+their SDKs lazily. Ollama and Ollama Cloud share the native `/api/chat`
+implementation. Calls are non-streaming and do not retry automatically.
 
 ## Available models
 
@@ -84,13 +84,15 @@ catalog.raw;                          // Native model-list data
 catalog.meta;                         // startedAt, endedAt, durationMs
 ```
 
-All five built-in providers support discovery using their configured credentials,
+All built-in providers support discovery using their configured credentials,
 base URL and transport. OpenAI and Anthropic use their native models endpoints;
 Anthropic pages are fetched automatically. Ollama and Ollama Cloud use native
 `/api/tags`: local Ollama reports available installed models, while the cloud host
-reports its cloud catalog. DeepSeek GETs its OpenAI-compatible `/models` directly
-with its own key and base URL; its entries carry no creation time, so `createdAt`
-is omitted rather than synthesized.
+reports its cloud catalog.
+
+DeepSeek reads its OpenAI-compatible `/models` endpoint with its own credentials;
+it does not synthesize creation times. Jev reads TypeSafe's `/v1/models` and maps
+reported names and release dates.
 
 `BridgeModelsResponse` contains `provider`, `models`, `raw`, and `meta`. Each
 `BridgeModel` has an `id` and native `raw` metadata. Optional common fields include
@@ -132,41 +134,34 @@ inferred from the startup registry; unknown providers throw `UnknownProviderErro
 ## Allowance
 
 ```ts
-const allowance = await bridge.getAllowance({ provider: "ollama-cloud" });
-allowance.available; // The provider's own verdict, or null when it has no such flag
-allowance.primary;   // The window that gates calls, or null when there is none
-allowance.windows;   // Every window the provider reports
-allowance.usage;     // Consumed usage for the report period, when available
-allowance.raw;       // Native payloads, e.g. { balance, usage } for Ollama Cloud
-allowance.meta;      // startedAt, endedAt, durationMs
+const allowance = await bridge.getAllowance({ provider: "deepseek" });
+allowance.available; // Provider's verdict, or null when none is reported
+allowance.primary;   // Window that gates calls, or null
+allowance.windows;   // Reported currency balances or plan windows
+allowance.usage;     // Optional usage report
+allowance.raw;       // Native payloads
+allowance.meta;      // Request timing
 ```
 
-`bridge.getAllowance({ provider })` asks how much of a provider's quota is still
-spendable and how much was consumed, returning `BridgeAllowanceResponse`: `provider`,
-`meta`, and the provider's `available`, `primary` window, its `windows`, optional `usage`
-and `raw`. `available` is the provider's own verdict that calls will succeed — `true`,
-`false`, or `null` when it reports no such flag. Each `AllowanceWindow` has a stable `id`,
-a `kind` of `money` (a currency balance) or `plan` (a share of a subscription period), an
-optional human `label`, optional `limit`, `remaining` and `used` amounts as `BridgeCost`,
-a `remainingFraction` in 0..1 that is `null` when it cannot be computed, an optional
-`period`, and the window's native `raw`. `primary` names the window that actually gates
-calls, and is `null` when the provider reports no windows. `AllowanceUsage` reports the
-`from`/`until` period, request counts, cost, token totals, and optional time `buckets`.
+`BridgeAllowanceResponse` includes the provider name and request timing alongside
+`available`, `primary`, `windows`, optional `usage`, and `raw`. Each window has an
+`id`, a `kind` (`money` or `plan`), optional monetary `limit`, `remaining` and `used`
+amounts, a `remainingFraction` in 0..1 or `null`, and an optional reporting period.
+Money uses `BridgeCost`: a currency code and an integer amount in minor units.
 
-Ollama Cloud implements the query from its `/api/balance` and `/api/usage` endpoints,
-using the configured bearer key; the two GETs run concurrently with a 15 s default
-timeout, negative balances read as 0, and a failing `/api/usage` only drops `usage`.
-DeepSeek implements it from `/user/balance`, read directly with its own key and base URL:
-one window per reported currency, `remaining` from `total_balance`, no `limit` and no
-`usage`. The remaining built-ins — OpenAI, Anthropic and local Ollama — do not implement
-it, so the bridge throws `UnsupportedFeatureError` with `feature === "allowance"`, and an
-unknown provider name throws `UnknownProviderError`. Custom adapters opt in by
-implementing `getAllowance(): Promise<ProviderAllowanceResponse>`.
+DeepSeek reads `/user/balance` with its own key and base URL. It reports one window
+per currency, with `remaining` from `total_balance`, no limit, and no usage report.
+Ollama Cloud reads `/api/balance` and `/api/usage` concurrently with a default
+15-second timeout; a failed usage read omits only `usage`, and negative balances
+read as zero. OpenAI, Anthropic, Jev and local Ollama do not report allowance.
+Requesting it from an adapter without support throws `UnsupportedFeatureError`
+with `feature === "allowance"`; an unknown provider throws `UnknownProviderError`.
 
-Reported amounts are provider decimals — USD for Ollama Cloud, the reported currency's
-own units for DeepSeek — not minor units. `toMinorUnits(value, fractionDigits = 2)`
-converts them to integer amounts for a `BridgeCost`; it works on the decimal string and
-rounds half-up, so `toMinorUnits("1.005")` is `101`.
+Custom adapters implement `getAllowance(): Promise<ProviderAllowanceResponse>`.
+Use `toMinorUnits(value, fractionDigits = 2)` to convert provider decimal amounts;
+it rounds half-up without floating-point arithmetic, so `toMinorUnits("1.005")`
+returns `101`. The [API reference](./docs/wiki/API-Reference.md) describes window
+and usage fields.
 
 ## Native input, canonical response
 
@@ -185,7 +180,43 @@ const res = await bridge.complete({
 const message = res.toDialect("openai");
 ```
 
-Omit `dialect` for canonical input. The built-in OpenAI and Anthropic dialects support native input; the Ollama dialect is a response converter.
+Omit `dialect` for canonical input. The built-in OpenAI, Anthropic and Jev dialects support native input; the Ollama dialect is a response converter.
+
+## Jev (TypeSafe)
+
+Jev evaluates text or structured state against typed questions rather than generating chat. Configure `TYPESAFE_API_KEY` and optionally `TYPESAFE_BASE_URL` (default `https://api.typesafe.ai/v1`). Register `JevProvider` and `jevDialect`, or enable `jev` through `createBuiltInProviders`:
+
+```ts
+import { createBridge, createBuiltInProviders, jevDialect } from "@productivehub/ai-bridge";
+
+const bridge = createBridge({
+  providers: createBuiltInProviders(),
+  dialects: { jev: jevDialect },
+});
+const response = await bridge.complete({
+  provider: "jev",
+  model: "jev-latest",
+  dialect: "jev",
+  input: {
+    state: { message: "My payouts have been failing for three days." },
+    questions: {
+      urgent: { type: "noul", instructions: "Is this urgent?" },
+      team: { type: "choice", instructions: "Which team should handle this?", criteria: { billing: "Payments", technical: "Bugs" } },
+      frustration: { type: "score", instructions: "How frustrated is the customer?", criteria: ["Calm", "Frustrated", "Very angry"] },
+    },
+  },
+});
+const { answers, model } = response.toDialect("jev");
+// model is the resolved version; response.model retains the requested alias.
+```
+
+`JevInput` omits the model, which belongs to the bridge request. `jevDialect.toBaseline(input)` prepares canonical input for an HTTP gateway. A string state becomes one user text message; object/array state becomes one user native block `{ type: "native", dialect: "jev", value: { state } }`. Questions are stored in `extensions.jev.questions`. Jev requires that one state message and rejects chat controls, tools, media and foreign native extensions before calling the API.
+
+The regular bridge response carries one provider-neutral `boolean`, `choice` or `score` block per question in `output.choices[0].message.content`. Blocks use `id` for the question key and `value` for the answer; probabilities, legends and confidence remain typed fields. JEV's `noul` is a probability, so its boolean block has `value: null` and the original `probability`, without applying a threshold. Other providers can report actual `value: true` or `false`.
+
+Callers can switch on `block.type` using the normal `ContentBlock` union, with no JEV-specific parsing. `EvaluationAnswer` and `EvaluationBlock` are exported contracts. The existing `native` block and raw response modes remain available, and `output.extensions.jev.answers` retains the native answers for compatibility. The JEV projection reconstructs native answers from typed blocks; other chat response dialects serialize evaluation groups as JSON text. Native response and usage extensions are preserved.
+
+`JevProvider.listModels()` queries `/models` under the configured `/v1` base URL. It maps native `name` and `release_date`, preserves descriptions in `raw`, and does not infer pricing or token limits. Allowance is unsupported. HTTP errors retain status and body via `ProviderHttpError`, including 429 and 529; calls use a timeout and do not retry automatically. See TypeSafe's [API reference](https://docs.typesafe.ai/api) and [model discovery](https://docs.typesafe.ai/models).
 
 ## Baseline features and conversion limits
 
@@ -206,6 +237,59 @@ Response projections return the target schema and can omit fields it cannot repr
 Unreported token counts are `null` in canonical usage. OpenAI projection can omit its optional usage block; Anthropic projection throws if required counts are unavailable. Anthropic prompt token totals include uncached input, cache reads and cache writes; output counts include thinking tokens. Projected schemas may require synthesized fields: for example, OpenAI `created` uses conversion time when the source reports no creation timestamp.
 
 Anthropic uses `maxOutputTokens` or a default of 4096 for its required `max_tokens`. Provider-native options without portable equivalents can be placed in `input.extensions`, keyed by wire API name, e.g. `{ openai: { logprobs: true } }`.
+
+## Caller-typed structured and raw responses
+
+`outputDialect` selects the returned output independently of the request's `dialect`.
+With the Jev bridge configured above, request typed answers directly:
+
+```ts
+import type { EvaluationAnswer, JevOutput } from "@productivehub/ai-bridge";
+
+type Answers = { urgent: Extract<EvaluationAnswer, { type: "boolean" }> };
+type NativeAnswers = { urgent: { type: "noul"; noul: number } };
+const request = {
+  provider: "jev" as const,
+  model: "jev-latest",
+  dialect: "jev" as const,
+  input: {
+    state: { message: "Payment failed" },
+    questions: { urgent: { type: "noul" as const, instructions: "Is this urgent?" } },
+  },
+};
+
+const result = await bridge.complete<Answers, JevOutput<NativeAnswers>>({
+  ...request, outputDialect: "structured", response: "both",
+});
+result.output.urgent.probability; // provider-neutral evaluation data
+result.raw.answers.urgent.noul; // typed untouched provider response
+
+const outputOnly = await bridge.complete<Answers>({
+  ...request, outputDialect: "structured", response: "output",
+}); // output, usage, meta and converters; no raw property
+
+const rawOnly = await bridge.complete<JevOutput<NativeAnswers>>({
+  ...request, response: "raw",
+}); // native response directly, without a bridge envelope or output projection
+```
+
+Omitted options retain canonical output and raw data (`response: "both"`).
+`response: "output"` keeps the envelope and omits raw. `response: "raw"` returns
+only the untouched native payload and skips output projections. Provider errors
+and native response validation still apply in raw mode.
+
+The intrinsic `structured` projection uses `BridgeOutput.structured` when present;
+otherwise it converts typed evaluation blocks into a provider-neutral answer map,
+or parses a single, complete JSON assistant answer. Invalid JSON,
+multiple candidates, truncated answers, tool calls and refusals cannot be
+projected to structured data. Chat callers can request JSON generation with
+`input.responseFormat`. The generic `<T>` describes the expected result at compile
+time; it does not generate a schema or validate arbitrary caller-defined fields
+at runtime. Validate those fields in the caller when needed.
+
+Existing responses can also use `result.toDialect<Answers>("structured")`.
+`JevInput<Questions>` and `JevOutput<Answers>` retain caller-defined question and
+answer keys. Custom providers can populate `BridgeOutput<T>.structured` directly.
 
 ## Custom providers and dialects
 
@@ -268,10 +352,25 @@ Built-in providers accept `apiKey`, `baseURL`, `fetch`, and `timeoutMs`. Explici
 | OpenAI | `OPENAI_API_KEY` | SDK `OPENAI_BASE_URL`, then OpenAI's default |
 | Anthropic | `ANTHROPIC_API_KEY` | SDK `ANTHROPIC_BASE_URL`, then Anthropic's default |
 | DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL`, then `https://api.deepseek.com` |
+| Jev (TypeSafe) | `TYPESAFE_API_KEY` | `TYPESAFE_BASE_URL`, then `https://api.typesafe.ai/v1` |
 | Ollama | Optional `OLLAMA_API_KEY` | `OLLAMA_BASE_URL`, then `http://localhost:11434` |
 | Ollama Cloud | `OLLAMA_CLOUD_API_KEY`, then `OLLAMA_API_KEY` | `OLLAMA_CLOUD_BASE_URL`, then `https://ollama.com` |
 
-For Ollama, use the server root or `/api` as `baseURL`. Cloud requires a key; local Ollama does not. No hosted-provider credential is reused for local Ollama. DeepSeek never reads `OPENAI_API_KEY` or `OPENAI_BASE_URL`: it resolves the DeepSeek pair once at construction and uses it for completion, discovery and allowance, and it strips the OpenAI SDK's organization/project headers.
+For Ollama, use the server root or `/api` as `baseURL`. Cloud requires a key; local Ollama does not. No hosted-provider credential is reused for local Ollama.
+
+DeepSeek resolves its own key and base URL at construction, never reads the
+`OPENAI_*` settings, and strips the OpenAI SDK's organization/project headers.
+
+## Harness integration and credentials
+
+A harness calling this library in-process needs the selected provider's
+credentials, but no gateway bearer token. The bridge opens no HTTP listener and
+does not read director project manifests or authenticate project IDs.
+
+To keep provider credentials in a separate server, call the
+[AI gateway](https://github.com/productivehub/ai-gateway/tree/main/packages/api)
+over HTTP. Its host controls caller authentication and project usage attribution;
+provider credentials and inbound caller credentials have separate purposes.
 
 ## Develop
 

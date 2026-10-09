@@ -42,7 +42,7 @@
       "import": "./dist/dialects/index.js"
     }
   },
-  "files": ["dist", "docs", "README.md", "LICENSE", "AUTHORS.md", "CONTRIBUTING.md"],
+  "files": ["dist", "docs", "assets", "README.md", "LICENSE", "AUTHORS.md", "CONTRIBUTING.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
