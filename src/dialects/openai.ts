@@ -3,7 +3,7 @@ import { evaluationContentToText } from "../evaluation.js";
 import type { OpenAIInput } from "./types.js";
 import type {
   ContentBlock, NativeFields, BridgeChoice, BridgeInput, BridgeMessage,
-  BridgeOutput, BridgeTool, BridgeUsage,
+  BridgeOutput, BridgeTool, BridgeUsage, FinishReason,
 } from "../baseline.js";
 import { blocks, extras, nativeFields, parseArguments, requestFields, requireAbsent, unsupported } from "./shared.js";
 
@@ -255,7 +255,7 @@ export function openAIOutputToBaseline(output: Chat): BridgeOutput {
     choices: output.choices.map((choice): BridgeChoice => ({
       index: choice.index,
       message: { ...fromMessage({ ...choice.message, role: "assistant" }), role: "assistant" },
-      finishReason: ({ stop: "stop", length: "length", tool_calls: "tool-calls", function_call: "tool-calls", content_filter: "content-filter" } as const)[choice.finish_reason],
+      finishReason: ({ stop: "stop", length: "length", tool_calls: "tool-calls", function_call: "tool-calls", content_filter: "content-filter" } as Record<string, FinishReason>)[choice.finish_reason] ?? "unknown",
       logprobs: choice.logprobs,
       extensions: nativeFields("openai", extras(choice, ["index", "message", "finish_reason", "logprobs"])),
     })),

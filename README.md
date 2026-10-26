@@ -2,7 +2,7 @@
 
 # @productivehub/ai-bridge
 
-Call any AI model provider through one provider-neutral format. `ai-bridge` sits between your code and providers such as OpenAI, Anthropic, DeepSeek, Jev and Ollama: providers translate their native APIs into the `bridge` baseline, and dialects translate the baseline into whichever response shape you need. It does not choose models for you; you name the provider and model on each call. By default, completions return a `BridgeResponse`; use `res.toDialect(name)` when you need another response shape. Query provider model catalogs with `bridge.listModels({ provider })`.
+Call any AI model provider through one provider-neutral format. `ai-bridge` sits between your code and providers such as OpenAI, Anthropic, DeepSeek, Mistral, xAI (Grok), Jev, Perplexity and Ollama: providers translate their native APIs into the `bridge` baseline, and dialects translate the baseline into whichever response shape you need. It does not choose models for you; you name the provider and model on each call. By default, completions return a `BridgeResponse`; use `res.toDialect(name)` when you need another response shape. Query provider model catalogs with `bridge.listModels({ provider })`.
 
 Created and maintained by [Segev Shmueli](https://github.com/segevsh) (`@segevsh`) as part of [productiveHub](https://github.com/productivehub).
 
@@ -90,8 +90,10 @@ Anthropic pages are fetched automatically. Ollama and Ollama Cloud use native
 `/api/tags`: local Ollama reports available installed models, while the cloud host
 reports its cloud catalog.
 
-DeepSeek reads its OpenAI-compatible `/models` endpoint with its own credentials;
-it does not synthesize creation times. Jev reads TypeSafe's `/v1/models` and maps
+DeepSeek and xAI read their OpenAI-compatible `/models` endpoints with their own
+credentials; neither synthesizes creation times. xAI also maps `context_length` to
+`maxInputTokens` and its listed text-token prices to `costs`. Mistral reads its
+`/models` endpoint and maps display names and `max_context_length`. Jev reads TypeSafe's `/v1/models` and maps
 reported names and release dates.
 
 `BridgeModelsResponse` contains `provider`, `models`, `raw`, and `meta`. Each
@@ -180,7 +182,70 @@ const res = await bridge.complete({
 const message = res.toDialect("openai");
 ```
 
-Omit `dialect` for canonical input. The built-in OpenAI, Anthropic and Jev dialects support native input; the Ollama dialect is a response converter.
+Omit `dialect` for canonical input. The built-in OpenAI, Anthropic, Mistral, Jev and Perplexity dialects support native input; the Ollama dialect is a response converter.
+
+## Perplexity Agent API
+
+`PerplexityProvider` calls [Perplexity's Agent API](https://docs.perplexity.ai/api-reference/agent-post) at `POST /v1/agent`, with model discovery at `GET /v1/models`. Set `PERPLEXITY_API_KEY`; `PERPLEXITY_BASE_URL` defaults to `https://api.perplexity.ai/v1` and must include `/v1` when overriding the host.
+
+```ts
+import { createBridge, createBuiltInProviders, perplexityDialect } from "@productivehub/ai-bridge";
+
+const bridge = createBridge({
+  providers: createBuiltInProviders(),
+  dialects: { perplexity: perplexityDialect },
+});
+const response = await bridge.complete({
+  provider: "perplexity",
+  model: "perplexity/sonar", // Or a provider/model ID from listModels().
+  dialect: "perplexity",
+  input: {
+    input: "Find recent developments in battery recycling.",
+    tools: [{ type: "web_search" }],
+    max_steps: 3,
+    max_output_tokens: 2048,
+  },
+});
+const native = response.toDialect("perplexity");
+```
+
+`perplexityDialect` accepts `PerplexityInput` and projects `PerplexityOutput`. Canonical requests support system/developer/user/assistant messages, text, images, documents, function calls/results, sampling, reasoning effort and JSON-schema output. Provider-specific controls such as `instructions`, `effort`, `max_steps` and `previous_response_id` live in `extensions.perplexity`; server tools use `{ type: "native", dialect: "perplexity", value: { type: "web_search" } }`. The native dialect prepares these fields for you. Model selection belongs to the bridge request: native `model`, `models` fallback chains and overriding `input` extensions are rejected. Streaming and background execution are unsupported.
+
+Responses retain text citations, ordered native search/tool results, function calls, message boundaries, token/cache usage and cost metadata (`usage.extensions.perplexity.cost`). All agent output items form one candidate. `raw` retains the untouched response. Missing usage stays unknown; failed or unfinished asynchronous responses throw. Discovery keeps native model metadata and omits placeholder `created: 0` timestamps. The provider has no allowance endpoint and reads only its own credentials.
+
+## Mistral
+
+`MistralProvider` calls [Mistral's Chat Completions API](https://docs.mistral.ai/api/endpoint/chat) at `POST /v1/chat/completions`, with model discovery at `GET /v1/models`. Set `MISTRAL_API_KEY`; `MISTRAL_BASE_URL` defaults to `https://api.mistral.ai/v1` and must include `/v1` when overriding the host. It needs no SDK and never reads OpenAI settings.
+
+```ts
+import { createBridge, createBuiltInProviders, mistralDialect } from "@productivehub/ai-bridge";
+
+const bridge = createBridge({
+  providers: createBuiltInProviders(),
+  dialects: { mistral: mistralDialect },
+});
+const response = await bridge.complete({
+  provider: "mistral",
+  model: "mistral-large-latest",
+  input: {
+    messages: [{ role: "user", content: "Bonjour" }],
+    maxOutputTokens: 256,
+    seed: 7,
+    extensions: { mistral: { safe_prompt: true } },
+  },
+});
+const native = response.toDialect("mistral");
+```
+
+`mistralDialect` accepts `MistralInput` (without model) and projects `MistralOutput`. Mistral validates request fields strictly, so the dialect maps canonical fields to Mistral's names (`max_tokens`, `random_seed`, `top_k`, `n`, `prompt_cache_key`, `reasoning_effort`) and turns `toolChoice: "required"` into `"any"`. Text, images, documents, uploaded files, audio, thinking, function tools and JSON or JSON-schema output are supported. Mistral-only controls such as `safe_prompt`, `prompt_mode` and `parallel_tool_calls` go in `extensions.mistral`.
+
+Mistral requires tool-call ids of exactly nine letters or digits. Ids from other providers are rewritten deterministically for each request, and the matching tool results follow them. The dialect rejects anything Mistral cannot express: cache-control hints, Ollama runtime options, reasoning `mode`/`budgetTokens`/`display`, the `max` effort, named system messages and streaming. Thinking chunks become `thinking` blocks, `model_length` maps to `context-limit`, and cached prompt tokens are reported as `cachedInputTokens`. There is no allowance endpoint.
+
+## xAI (Grok)
+
+`XAIProvider` calls xAI's OpenAI-compatible Chat Completions API at `https://api.x.ai/v1` through the OpenAI SDK, so use `openaiDialect` for native input and output. Set `XAI_API_KEY`; `XAI_BASE_URL` overrides the host. Like DeepSeek, it resolves only its own key and base URL, never reads `OPENAI_*` settings, and strips the SDK's organization and project headers.
+
+Grok's `reasoning_content` is kept in `message.extensions.openai`, and the extra usage fields (`cost_in_usd_ticks`, `num_sources_used`) are kept in `usage.extensions.openai`. Finish reasons the OpenAI dialect does not know, such as `end_turn`, map to `unknown`. Discovery maps `context_length` and the per-100M-token cent prices to `maxInputTokens` and `costs`, but only when a price is a whole number of cents per million tokens; other prices stay in `raw`. Billing lives in xAI's separate Management API, so there is no allowance read.
 
 ## Jev (TypeSafe)
 
@@ -352,14 +417,18 @@ Built-in providers accept `apiKey`, `baseURL`, `fetch`, and `timeoutMs`. Explici
 | OpenAI | `OPENAI_API_KEY` | SDK `OPENAI_BASE_URL`, then OpenAI's default |
 | Anthropic | `ANTHROPIC_API_KEY` | SDK `ANTHROPIC_BASE_URL`, then Anthropic's default |
 | DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL`, then `https://api.deepseek.com` |
+| Mistral | `MISTRAL_API_KEY` | `MISTRAL_BASE_URL`, then `https://api.mistral.ai/v1` |
+| xAI (Grok) | `XAI_API_KEY` | `XAI_BASE_URL`, then `https://api.x.ai/v1` |
 | Jev (TypeSafe) | `TYPESAFE_API_KEY` | `TYPESAFE_BASE_URL`, then `https://api.typesafe.ai/v1` |
+| Perplexity | `PERPLEXITY_API_KEY` | `PERPLEXITY_BASE_URL`, then `https://api.perplexity.ai/v1` |
 | Ollama | Optional `OLLAMA_API_KEY` | `OLLAMA_BASE_URL`, then `http://localhost:11434` |
 | Ollama Cloud | `OLLAMA_CLOUD_API_KEY`, then `OLLAMA_API_KEY` | `OLLAMA_CLOUD_BASE_URL`, then `https://ollama.com` |
 
 For Ollama, use the server root or `/api` as `baseURL`. Cloud requires a key; local Ollama does not. No hosted-provider credential is reused for local Ollama.
 
-DeepSeek resolves its own key and base URL at construction, never reads the
-`OPENAI_*` settings, and strips the OpenAI SDK's organization/project headers.
+DeepSeek and xAI resolve their own key and base URL at construction, never read the
+`OPENAI_*` settings, and strip the OpenAI SDK's organization/project headers. Mistral
+does not use the OpenAI SDK at all.
 
 ## Harness integration and credentials
 

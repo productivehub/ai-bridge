@@ -23,3 +23,9 @@ export { ollamaDialect } from "./ollama.js";
 export type { OllamaOutput, OllamaMessage } from "./ollama.js";
 export { jevDialect } from "./jev.js";
 export type { JevJson, JevDescription, JevQuestion, JevInput, JevAnswer, JevOutput } from "./jev.js";
+
+export { perplexityDialect } from "./perplexity.js";
+export type { PerplexityInput, PerplexityOutput, PerplexityItem } from "./perplexity.js";
+
+export { mistralDialect } from "./mistral.js";
+export type { MistralInput, MistralOutput, MistralMessage, MistralChunk, MistralToolCall, MistralTool, MistralUsage } from "./mistral.js";

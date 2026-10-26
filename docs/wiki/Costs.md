@@ -41,6 +41,6 @@ The TypeScript contract uses `string` and `number`; it does not perform runtime 
 
 Each field is an optional `BridgeCost`; each object includes its own currency. Omit unknown rates, or omit `costs` entirely if no rates are available. An explicit `amount: 0` means free for that billing category.
 
-Built-in adapters currently omit costs because their model-list mappings do not receive these rates. The bridge does not maintain a hardcoded price catalog or fetch pricing separately. Custom providers can populate costs when their upstream response or integration supplies known rates.
+Of the built-in adapters, only xAI populates costs: its `/models` list reports text-token prices, which become `inputPerMillionTokens`, `outputPerMillionTokens` and `cachedInputPerMillionTokens` when each is a whole number of cents. The others omit costs because their model lists do not carry rates. The bridge does not maintain a hardcoded price catalog or fetch pricing separately. Custom providers can populate costs when their upstream response or integration supplies known rates.
 
 This contract describes model rates. It does not calculate or report the actual charge for a completion. Prices that depend on context size, service tier, cache lifetime, or other conditions should retain those details in `model.raw`; this flat rate object does not describe pricing tiers.
