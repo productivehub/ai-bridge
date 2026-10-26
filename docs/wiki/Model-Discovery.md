@@ -48,6 +48,11 @@ DeepSeek queries `/models` directly with its own key and base URL. Its current
 catalog does not supply creation timestamps, pricing or token limits, so those
 fields remain absent.
 
+xAI queries `/models` the same way and maps `context_length` to `maxInputTokens`.
+Its text-token prices (USD cents per 100M tokens) become `costs` when they are a
+whole number of cents per million tokens; see [Costs](./Costs.md). Mistral queries
+`/v1/models`, mapping `name`, `owned_by`, `created` and `max_context_length`.
+
 Catalogs can be empty. Local Ollama reports installed models; cloud discovery reports the cloud host's catalog. Discovery does not guarantee that every listed model supports chat completions.
 
 Discovery returns canonical metadata and has no `toDialect` conversion. Custom providers must return `ProviderModelsResponse` from their optional `listModels` method. Adapters without discovery throw `UnsupportedFeatureError`; unknown registry names throw `UnknownProviderError`.

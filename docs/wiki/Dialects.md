@@ -12,10 +12,12 @@ Providers communicate through this baseline. Dialects convert caller input into 
 | `structured` | Response-only dialect | Explicit structured data, an answer map from evaluation blocks, or one complete parsed JSON chat answer |
 | `openai` | OpenAI Chat Completions input | OpenAI Chat Completions response |
 | `anthropic` | Anthropic Messages input | Anthropic Messages response |
+| `mistral` | Mistral Chat Completions input (`MistralInput`, without model) | Mistral Chat Completions response (`MistralOutput`) |
 | `jev` | TypeSafe state and typed questions (`JevInput`, without model) | TypeSafe typed answers and usage (`JevOutput`) |
+| `perplexity` | Agent input items and controls (`PerplexityInput`, without model) | Agent response items, citations and usage (`PerplexityOutput`) |
 | `ollama` | Response-only dialect | Native Ollama chat response |
 
-The `bridge` and response-only `structured` dialects are intrinsic and reserved. Inject `openaiDialect`, `anthropicDialect`, `jevDialect`, or `ollamaDialect` under the names you want to expose. Dialect names do not have to match provider names. See [caller-typed structured and raw responses](https://github.com/productivehub/ai-bridge#caller-typed-structured-and-raw-responses) for `complete<T>()`, `outputDialect` and the three response modes.
+The `bridge` and response-only `structured` dialects are intrinsic and reserved. Inject `openaiDialect`, `anthropicDialect`, `mistralDialect`, `jevDialect`, `perplexityDialect`, or `ollamaDialect` under the names you want to expose. Dialect names do not have to match provider names: xAI (Grok), DeepSeek and other OpenAI-compatible providers use `openai`. See [caller-typed structured and raw responses](https://github.com/productivehub/ai-bridge#caller-typed-structured-and-raw-responses) for `complete<T>()`, `outputDialect` and the three response modes.
 
 ## Convert a response
 

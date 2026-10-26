@@ -11,7 +11,10 @@
 | `openai` | Nonempty API key | `OPENAI_API_KEY` | Explicit URL, `OPENAI_BASE_URL`, then `https://api.openai.com/v1` |
 | `anthropic` | Nonempty API key | `ANTHROPIC_API_KEY` | Explicit URL, `ANTHROPIC_BASE_URL`, then `https://api.anthropic.com` |
 | `deepseek` | Nonempty API key | `DEEPSEEK_API_KEY` | Explicit URL, `DEEPSEEK_BASE_URL`, then `https://api.deepseek.com` |
+| `mistral` | Nonempty API key | `MISTRAL_API_KEY` | Explicit URL, `MISTRAL_BASE_URL`, then `https://api.mistral.ai/v1` |
+| `xai` | Nonempty API key | `XAI_API_KEY` | Explicit URL, `XAI_BASE_URL`, then `https://api.x.ai/v1` |
 | `jev` | Nonempty API key | `TYPESAFE_API_KEY` | Explicit URL, `TYPESAFE_BASE_URL`, then `https://api.typesafe.ai/v1` |
+| `perplexity` | Nonempty API key | `PERPLEXITY_API_KEY` | Explicit URL, `PERPLEXITY_BASE_URL`, then `https://api.perplexity.ai/v1` |
 | `ollama` | Explicit URL or nonempty `OLLAMA_BASE_URL` | Optional `OLLAMA_API_KEY` | Explicit URL or `OLLAMA_BASE_URL`; no implicit localhost registration |
 | `ollama-cloud` | Nonempty API key | `OLLAMA_CLOUD_API_KEY`, then `OLLAMA_API_KEY` | Explicit URL, `OLLAMA_CLOUD_BASE_URL`, then `https://ollama.com` |
 
