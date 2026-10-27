@@ -1,5 +1,7 @@
 <img src="./assets/icon.svg" alt="AI Bridge icon" width="128" height="128" />
 
+> **Moved.** AI Bridge now lives in [productivehub/ai-gateway](https://github.com/productivehub/ai-gateway) as [`packages/bridge`](https://github.com/productivehub/ai-gateway/tree/main/packages/bridge), with its full history. This repository is archived and read-only; open issues and pull requests there. The npm package name, `@productivehub/ai-bridge`, is unchanged.
+
 # @productivehub/ai-bridge
 
 Call any AI model provider through one provider-neutral format. `ai-bridge` sits between your code and providers such as OpenAI, Anthropic, DeepSeek, Mistral, xAI (Grok), Jev, Perplexity and Ollama: providers translate their native APIs into the `bridge` baseline, and dialects translate the baseline into whichever response shape you need. It does not choose models for you; you name the provider and model on each call. By default, completions return a `BridgeResponse`; use `res.toDialect(name)` when you need another response shape. Query provider model catalogs with `bridge.listModels({ provider })`.
